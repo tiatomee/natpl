@@ -60,7 +60,7 @@ pub enum Token<'input> {
     IntegerLit(usize),
 
     #[regex(r"[0-9]+\.[0-9]+", |lex| {
-        let mut parts = lex.slice().split(".");
+        let mut parts = lex.slice().split('.');
         let integer = parts.next()?.parse().ok()?;
         let decimal = parts.next()?.parse().ok()?;
         Some((integer, decimal))
@@ -71,7 +71,7 @@ pub enum Token<'input> {
         let mut s = lex.slice().split("x10^");
         let (integer, decimal) = {
             let s = s.next()?;
-            let mut parts = s.split(".");
+            let mut parts = s.split('.');
             let integer = parts.next()?.parse().ok()?;
             let decimal = parts.next()?.parse().ok()?;
             (integer, decimal)
@@ -83,7 +83,7 @@ pub enum Token<'input> {
         let mut s = lex.slice().split("x10");
         let (integer, decimal) = {
             let s = s.next()?;
-            let mut parts = s.split(".");
+            let mut parts = s.split('.');
             let integer = parts.next()?.parse().ok()?;
             let decimal = parts.next()?.parse().ok()?;
             (integer, decimal)

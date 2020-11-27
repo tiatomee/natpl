@@ -1,4 +1,10 @@
-use crate::{syntax::{DeclarationLhs, DeclarationOrEquality, Expression, InfixOp, LineItem, Name, PrefixOp, SiPrefix}, tokenising::{Span, Token}};
+use crate::{
+    syntax::{
+        DeclarationLhs, DeclarationOrEquality, Expression, HasFC, Identifier, InfixOp, LineItem,
+        PrefixOp, SiPrefix, FC,
+    },
+    tokenising::{Span, Token},
+};
 use thiserror::Error;
 
 pub type Result<'src, T> = core::result::Result<T, ParseError<'src>>;
@@ -7,10 +13,9 @@ pub type Result<'src, T> = core::result::Result<T, ParseError<'src>>;
 pub enum ParseError<'src> {
     #[error("Unexpected end of input")]
     UnexpectedEnd,
-    #[error("Unexpected token found at col {}: {:?}", .1.start, .0)]
-    UnexpectedToken(Token<'src>, Span),
+    #[error("Unexpected token found at col {}: {:?}", .1.start + 1, .0)]
+    UnexpectedToken(Token<'src>, FC),
 }
-
 
 pub struct Parser<'toks, 'src> {
     toks: &'toks [(Token<'src>, Span)],
@@ -20,14 +25,14 @@ impl<'toks, 'src> Parser<'toks, 'src> {
     pub fn parse_line(line_toks: &'toks [(Token<'src>, Span)]) -> Result<'src, LineItem> {
         let mut this = Self { toks: line_toks };
 
-        if let Ok(unit) = this.parse_unit_declaration() {
-            return Ok(LineItem::UnitDeclaration(unit));
+        if let Ok((fc, name)) = this.parse_unit_declaration() {
+            return Ok(LineItem::UnitDeclaration(fc, name));
         } else {
             this.toks = line_toks;
         }
 
-        if let Ok(expr) = this.parse_printed_expr() {
-            return Ok(LineItem::PrintedExpression(expr));
+        if let Ok((fc, expr)) = this.parse_printed_expr() {
+            return Ok(LineItem::PrintedExpression(fc, expr));
         } else {
             this.toks = line_toks;
         };
@@ -40,52 +45,68 @@ impl<'toks, 'src> Parser<'toks, 'src> {
 
         let expr = this.parse_expr()?;
 
-        Ok(LineItem::SilentExpression(expr))
+        if let Some((t, span)) = this.toks.first() {
+            Err(ParseError::UnexpectedToken(*t, span.into()))
+        } else {
+            Ok(LineItem::SilentExpression(expr))
+        }
     }
 
-    fn parse_unit_declaration(&mut self) -> Result<'src, Name> {
-        self.expect(|t| matches!(t, Token::Unit))?;
-        let name = self.expect(|t| match t {
-            Token::Identifier(name) => Some(name),
-            _ => None,
+    fn parse_unit_declaration(&mut self) -> Result<'src, (FC, Identifier)> {
+        let fc = self.expect(|fc, t| {
+            if matches!(t, Token::Unit) {
+                Some(fc)
+            } else {
+                None
+            }
         })?;
+        let name = self.expect_identifier()?;
 
-        if !self.toks.is_empty() {
-            Err(ParseError::UnexpectedEnd)
+        if let Some((t, span)) = self.toks.first() {
+            Err(ParseError::UnexpectedToken(*t, span.into()))
         } else {
-            Ok(name.into())
+            Ok((fc.merge(name.fc()), name))
         }
     }
 
     fn parse_declaration_or_equality(&mut self) -> Result<'src, DeclarationOrEquality> {
         let name = self.expect_identifier()?;
+        let fc_start = name.fc();
 
         let lhs = match self.peek() {
             Some(Token::ParenOpen) => {
                 // function call / definition
-                let args = self.paren_list(|p| p.expect_identifier().map(|s| s.into()))?;
+                let (arg_fc, args) = self.paren_list(|p| p.expect_identifier())?;
                 DeclarationLhs::Function {
-                    name: name.into(),
+                    fc: name.fc().merge(arg_fc),
+                    name,
                     args,
                 }
             }
-            _ => DeclarationLhs::Variable(name.into()),
+            _ => DeclarationLhs::Variable(name),
         };
 
-        self.expect(|t| matches!(t, Token::OpEq))?;
+        self.expect(|_, t| matches!(t, Token::OpEq))?;
 
         let rhs = self.parse_expr()?;
 
-        if !self.toks.is_empty() {
-            Err(ParseError::UnexpectedEnd)
+        let fc = fc_start.merge(rhs.fc());
+
+        if let Some((t, span)) = self.toks.first() {
+            Err(ParseError::UnexpectedToken(*t, span.into()))
         } else {
-            Ok(DeclarationOrEquality { lhs, rhs })
+            Ok(DeclarationOrEquality { fc, lhs, rhs })
         }
     }
 
-    fn parse_printed_expr(&mut self) -> Result<'src, Expression> {
-        self.expect(|t| matches!(t, Token::OpGt))?;
-        self.parse_expr()
+    fn parse_printed_expr(&mut self) -> Result<'src, (FC, Expression)> {
+        let (fc, ()) = self.expect_and_fc(|t| matches!(t, Token::OpGt))?;
+        let expr = self.parse_expr()?;
+        if let Some((t, span)) = self.toks.first() {
+            Err(ParseError::UnexpectedToken(*t, span.into()))
+        } else {
+            Ok((fc.merge(expr.fc()), expr))
+        }
     }
 
     fn parse_expr(&mut self) -> Result<'src, Expression> {
@@ -93,13 +114,13 @@ impl<'toks, 'src> Parser<'toks, 'src> {
     }
 
     fn parse_expr_bp(&mut self, min_bp: u8) -> Result<'src, Expression> {
+        let (t, span) = self.toks.first().ok_or(ParseError::UnexpectedEnd)?;
 
-        let t = self.peek().ok_or(ParseError::UnexpectedEnd)?;
-
-        let mut lhs = if let Some(((), bp, op)) = prefix_binding_power(t) {
+        let mut lhs = if let Some(((), bp, op)) = prefix_binding_power(*t) {
             self.next()?;
             let rhs = self.parse_expr_bp(bp)?;
             Expression::PrefixOp {
+                fc: FC::from(span).merge(rhs.fc()),
                 op,
                 expr: Box::new(rhs),
             }
@@ -107,6 +128,7 @@ impl<'toks, 'src> Parser<'toks, 'src> {
             self.parse_expr_atom()?
         };
 
+        #[allow(clippy::while_let_loop)]
         loop {
             let t = match self.peek() {
                 Some(t) => t,
@@ -119,8 +141,9 @@ impl<'toks, 'src> Parser<'toks, 'src> {
                 }
 
                 if matches!(t, Token::ParenOpen) {
-                    let args = self.paren_list(Self::parse_expr)?;
+                    let (args_fc, args) = self.paren_list(Self::parse_expr)?;
                     lhs = Expression::Call {
+                        fc: lhs.fc().merge(args_fc),
                         base: Box::new(lhs),
                         args,
                     };
@@ -130,23 +153,23 @@ impl<'toks, 'src> Parser<'toks, 'src> {
                 continue;
             }
 
-            let (l_bp, r_bp, op) = 
-                    if let Some(val) = infix_binding_power(t) {
-                        if !matches!(t, Token::Identifier(_)) {
-                            self.next()?;
-                        }
-                        val
-                    } else {
-                        break
-                    };
+            let (l_bp, r_bp, op) = if let Some(val) = infix_binding_power(t) {
+                if !matches!(t, Token::Identifier(_)) {
+                    self.next()?;
+                }
+                val
+            } else {
+                break;
+            };
 
             if l_bp < min_bp {
-                break
+                break;
             }
 
             let rhs = self.parse_expr_bp(r_bp)?;
 
             lhs = Expression::InfixOp {
+                fc: lhs.fc().merge(rhs.fc()),
                 op,
                 lhs: Box::new(lhs),
                 rhs: Box::new(rhs),
@@ -157,54 +180,59 @@ impl<'toks, 'src> Parser<'toks, 'src> {
     }
 
     fn parse_expr_atom(&mut self) -> Result<'src, Expression> {
-        let (t, span) = self.next_with_span()?;
+        let (t, fc) = self.next_with_fc()?;
         match t {
             Token::BracketOpen => {
                 let expr = self.parse_expr()?;
-                self.expect(|t| matches!(t, Token::BracketClose))?;
-                Ok(Expression::UnitOf(Box::new(expr)))
-            },
+                let (fc_end, ()) = self.expect_and_fc(|t| matches!(t, Token::BracketClose))?;
+                Ok(Expression::UnitOf(fc.merge(fc_end), Box::new(expr)))
+            }
             Token::ParenOpen => {
                 let expr = self.parse_expr()?;
-                self.expect(|t| matches!(t, Token::ParenClose))?;
-                Ok(expr)
+                let (fc_end, ()) = self.expect_and_fc(|t| matches!(t, Token::ParenClose))?;
+                Ok(Expression::Parenthesised(fc.merge(fc_end), Box::new(expr)))
             }
             Token::Identifier(name) => {
                 if let Some((prefix, stripped)) = identifier_maybe_unit_prefix(name) {
                     Ok(Expression::MaybeUnitPrefix {
+                        fc,
                         prefix,
                         full_name: name.into(),
                         name: stripped.into(),
                     })
                 } else {
-                    Ok(Expression::Variable(name.into()))
+                    Ok(Expression::Variable(Identifier(fc, name.into())))
                 }
             }
             Token::IntegerLit(val) => Ok(Expression::IntegerLit {
+                fc,
                 mantissa: val,
                 exponent: 0,
             }),
             Token::FloatLit((int, dec)) => Ok(Expression::FloatLit {
+                fc,
                 mantissa_int: int,
                 mantissa_dec: dec,
                 exponent: 0,
             }),
             Token::ScientificFloatLit((int, dec, exp)) => Ok(Expression::FloatLit {
+                fc,
                 mantissa_int: int,
                 mantissa_dec: dec,
                 exponent: exp,
             }),
             Token::ScientificIntegerLit((val, exp)) => Ok(Expression::IntegerLit {
+                fc,
                 mantissa: val,
                 exponent: exp,
             }),
-            t => Err(ParseError::UnexpectedToken(t, span)),
+            t => Err(ParseError::UnexpectedToken(t, fc)),
         }
     }
 
-    fn expect_identifier(&mut self) -> Result<'src, &'src str> {
-        self.expect(|t| match t {
-            Token::Identifier(name) => Some(name),
+    fn expect_identifier(&mut self) -> Result<'src, Identifier> {
+        self.expect(|fc, t| match t {
+            Token::Identifier(name) => Some(Identifier(fc, name.into())),
             _ => None,
         })
     }
@@ -212,31 +240,31 @@ impl<'toks, 'src> Parser<'toks, 'src> {
     fn paren_list<T>(
         &mut self,
         mut f: impl FnMut(&mut Self) -> Result<'src, T>,
-    ) -> Result<'src, Vec<T>> {
-        self.expect(|t| matches!(t, Token::ParenOpen))?;
+    ) -> Result<'src, (FC, Vec<T>)> {
+        let (fc, ()) = self.expect_and_fc(|t| matches!(t, Token::ParenOpen))?;
 
         let mut vals = vec![];
 
         loop {
-            if let Some(Token::ParenClose) = self.peek() {
+            if let Some((Token::ParenClose, span)) = self.toks.first() {
                 self.next()?;
-                return Ok(vals);
+                return Ok((fc.merge(FC::from(span)), vals));
             }
 
             vals.push(f(self)?);
 
-            let end = self.expect(|t| {
+            let (fc_, end) = self.expect(|fc, t| {
                 if matches!(t, Token::ParenClose) {
-                    Some(true)
+                    Some((fc, true))
                 } else if matches!(t, Token::Comma) {
-                    Some(false)
+                    Some((fc, false))
                 } else {
                     None
                 }
             })?;
 
             if end {
-                return Ok(vals);
+                return Ok((fc.merge(fc_), vals));
             }
         }
     }
@@ -258,29 +286,51 @@ impl<'toks, 'src> Parser<'toks, 'src> {
         }
     }
 
-    fn next_with_span(&mut self) -> Result<'src, (Token<'src>, Span)> {
+    fn next_with_fc(&mut self) -> Result<'src, (Token<'src>, FC)> {
         match self.toks {
             [] => Err(ParseError::UnexpectedEnd),
             [(t, span), rest @ ..] => {
                 self.toks = rest;
-                Ok((*t, span.clone()))
+                Ok((*t, FC::from_span(span.clone())))
             }
         }
     }
 
     fn expect<T: ExpectRet>(
         &mut self,
-        f: impl FnOnce(Token<'src>) -> T,
+        f: impl FnOnce(FC, Token<'src>) -> T,
     ) -> Result<'src, T::RetType> {
         match self.toks {
             [] => Err(ParseError::UnexpectedEnd),
-            [(t, span), rest @ ..] => match f(*t).as_option() {
-                Some(res) => {
-                    self.toks = rest;
-                    Ok(res)
+            [(t, span), rest @ ..] => {
+                let fc = FC::from(span);
+                match f(fc, *t).as_option() {
+                    Some(res) => {
+                        self.toks = rest;
+                        Ok(res)
+                    }
+                    None => Err(ParseError::UnexpectedToken(*t, fc)),
                 }
-                None => Err(ParseError::UnexpectedToken(*t, span.clone())),
-            },
+            }
+        }
+    }
+
+    fn expect_and_fc<T: ExpectRet>(
+        &mut self,
+        f: impl FnOnce(Token<'src>) -> T,
+    ) -> Result<'src, (FC, T::RetType)> {
+        match self.toks {
+            [] => Err(ParseError::UnexpectedEnd),
+            [(t, span), rest @ ..] => {
+                let fc = FC::from(span);
+                match f(*t).as_option() {
+                    Some(res) => {
+                        self.toks = rest;
+                        Ok((fc, res))
+                    }
+                    None => Err(ParseError::UnexpectedToken(*t, fc)),
+                }
+            }
         }
     }
 }
@@ -295,7 +345,6 @@ fn prefix_binding_power(t: Token<'_>) -> Option<((), u8, PrefixOp)> {
 
 fn infix_binding_power(t: Token<'_>) -> Option<(u8, u8, InfixOp)> {
     match t {
-        
         Token::OpPow => Some((91, 90, InfixOp::Pow)),
         Token::OpMul | Token::Identifier(_) => Some((80, 81, InfixOp::Mul)),
         Token::OpDiv => Some((80, 81, InfixOp::Div)),
@@ -306,8 +355,8 @@ fn infix_binding_power(t: Token<'_>) -> Option<(u8, u8, InfixOp)> {
         Token::OpEq => Some((20, 21, InfixOp::Eq)),
         Token::OpNeq => Some((20, 21, InfixOp::Neq)),
         Token::OpGt => Some((20, 21, InfixOp::Gt)),
-        
-        _ => None
+
+        _ => None,
     }
 }
 
@@ -355,8 +404,10 @@ fn identifier_maybe_unit_prefix(name: &str) -> Option<(SiPrefix, &str)> {
     ];
 
     for (prefix, si) in PREFIXES {
-        if let Some(n) = name.strip_prefix(prefix) {
-            return Some((*si, n));
+        match name.strip_prefix(prefix) {
+            Some("") => continue,
+            Some(n) => return Some((*si, n)),
+            None => continue,
         }
     }
     None
