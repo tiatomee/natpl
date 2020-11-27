@@ -2,14 +2,15 @@ use runtime::EvalResult;
 use rustyline::error::ReadlineError;
 
 use owo_colors::OwoColorize;
+use syntax::HasFC;
 
 pub mod syntax;
 
 pub mod parsing;
 pub mod tokenising;
 
-pub mod term;
 pub mod runtime;
+pub mod term;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rl = rustyline::Editor::<()>::new();
@@ -22,7 +23,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let readline = rl.readline(&prompt);
         match readline {
             Ok(line) => {
-
                 if line.is_empty() {
                     continue;
                 }
@@ -33,22 +33,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let line_item = parsing::Parser::parse_line(&toks);
 
                 match line_item {
-                    Ok(item) => {
-                        match rt.eval_line_item(item) {
-                            Ok(EvalResult::Empty) => {},
-                            Ok(EvalResult::Value(val)) => {
-                                let response = format!("{:<20} [{}]", val.kind.to_string(), val.unit);
-                                println!("{} {}", "✔".green(), response.bright_black());
-                            },
-                            Ok(EvalResult::PrintValue(expr, val)) => {
-                                let response = format!("{:?} => {:<20} [{}]", expr, val.kind.to_string(), val.unit);
-                                println!("{} {}", "✔".green(), response.bright_black());
-                            },
-                            Err(err) => {
-                                eprintln!("{} {}", "✘".red(), err);
-                            }
+                    Ok(item) => match rt.eval_line_item(item) {
+                        Ok(EvalResult::Empty) => {}
+                        Ok(EvalResult::Value(val)) => {
+                            let response = format!("{:<20} [{}]", val.kind.to_string(), val.unit);
+                            println!("{} {}", "✔".green(), response.bright_black());
                         }
-                    }
+                        Ok(EvalResult::PrintValue(expr, val)) => {
+                            let range = expr.fc();
+                            let input_slice = &line[range.start..range.end];
+
+                            let response = format!(
+                                "{} => {:<20} [{}]",
+                                input_slice,
+                                val.kind.to_string(),
+                                val.unit
+                            );
+                            println!("{} {}", "✔".green(), response.bright_black());
+                        }
+                        Err(err) => {
+                            eprintln!("{} {}", "✘".red(), err);
+                        }
+                    },
                     Err(err) => {
                         eprintln!("Parse error: {}", err);
                         continue;

@@ -148,9 +148,8 @@ impl<'toks, 'src> Parser<'toks, 'src> {
                             base: Box::new(lhs),
                             args,
                         };
-                    },
+                    }
                     Token::OpPowNum(n) => {
-                        self.next()?;
                         lhs = Expression::InfixOp {
                             fc: lhs.fc().merge(fc),
                             op: InfixOp::Pow,
@@ -161,32 +160,31 @@ impl<'toks, 'src> Parser<'toks, 'src> {
                                 exponent: 0,
                             }),
                         };
-                    },
+                    }
                     _ => unreachable!(),
                 }
                 continue;
             }
 
-            let (l_bp, r_bp, op) = if let Some(val) = infix_binding_power(t) {
+            if let Some((l_bp, r_bp, op)) = infix_binding_power(t) {
+                if l_bp < min_bp {
+                    break;
+                }
+
                 if !matches!(t, Token::Identifier(_)) {
                     self.next()?;
                 }
-                val
+
+                let rhs = self.parse_expr_bp(r_bp)?;
+
+                lhs = Expression::InfixOp {
+                    fc: lhs.fc().merge(rhs.fc()),
+                    op,
+                    lhs: Box::new(lhs),
+                    rhs: Box::new(rhs),
+                };
             } else {
                 break;
-            };
-
-            if l_bp < min_bp {
-                break;
-            }
-
-            let rhs = self.parse_expr_bp(r_bp)?;
-
-            lhs = Expression::InfixOp {
-                fc: lhs.fc().merge(rhs.fc()),
-                op,
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
             };
         }
 

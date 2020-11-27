@@ -1,11 +1,11 @@
-use std::fmt::Display;
+use std::{collections::BTreeMap, fmt::Display};
 
-use crate::syntax::{InfixOp, Name};
+use crate::syntax::Name;
 
 #[derive(Debug, Clone)]
 pub struct Value {
     pub kind: ValueKind,
-    pub unit: Term,
+    pub unit: Unit,
 }
 
 #[derive(Debug, Clone)]
@@ -23,35 +23,71 @@ impl Display for ValueKind {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Term {
-    Value(ValueKind),
-    UnitRef(Name),
-    InfixOp {
-        op: InfixOp,
-        lhs: Box<Term>,
-        rhs: Box<Term>,
-    }
+#[derive(Default, Debug, Clone, Eq, PartialEq)]
+pub struct Unit {
+    parts: BTreeMap<Name, isize>,
 }
 
-impl Term {
-    pub fn normalised(&self) -> Term {
-        self.clone()
+impl Unit {
+    pub fn new() -> Self {
+        Default::default()
     }
 
-    pub fn normalise(&mut self) {
-        *self = self.normalised();
+    pub fn new_named(name: Name) -> Self {
+        let mut this = Self::new();
+        this.parts.insert(name, 1);
+        this
     }
-}
 
-impl Display for Term {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Term::Value(v) => v.fmt(f),
-            Term::UnitRef(u) => f.write_fmt(format_args!("{}", u)),
-            Term::InfixOp { op, lhs, rhs } => {
-                f.write_fmt(format_args!("({} {} {})", lhs, op, rhs))
+    pub fn multiply(&self, other: &Unit) -> Unit {
+        let mut parts = self.parts.clone();
+
+        for (name, val) in &other.parts {
+            let total = *parts
+                .entry(name.clone())
+                .and_modify(|e| *e += *val)
+                .or_insert(*val);
+
+            if total == 0 {
+                parts.remove(name);
             }
         }
+
+        Unit { parts }
+    }
+
+    pub fn divide(&self, other: &Unit) -> Unit {
+        let mut parts = self.parts.clone();
+
+        for (name, val) in &other.parts {
+            let total = *parts
+                .entry(name.clone())
+                .and_modify(|e| *e -= *val)
+                .or_insert(-*val);
+
+            if total == 0 {
+                parts.remove(name);
+            }
+        }
+
+        Unit { parts }
+    }
+}
+
+impl Display for Unit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for (i, (name, pow)) in self.parts.iter().enumerate() {
+            if i > 0 {
+                f.write_str(" ")?;
+            }
+
+            f.write_str(name)?;
+
+            if *pow != 1 {
+                f.write_fmt(format_args!("^{}", *pow))?;
+            }
+        }
+
+        Ok(())
     }
 }
