@@ -130,8 +130,8 @@ impl<'toks, 'src> Parser<'toks, 'src> {
 
         #[allow(clippy::while_let_loop)]
         loop {
-            let t = match self.peek() {
-                Some(t) => t,
+            let (fc, t) = match self.toks.first() {
+                Some((t, span)) => (span.into(), *t),
                 None => break,
             };
 
@@ -140,15 +140,29 @@ impl<'toks, 'src> Parser<'toks, 'src> {
                     break;
                 }
 
-                if matches!(t, Token::ParenOpen) {
-                    let (args_fc, args) = self.paren_list(Self::parse_expr)?;
-                    lhs = Expression::Call {
-                        fc: lhs.fc().merge(args_fc),
-                        base: Box::new(lhs),
-                        args,
-                    };
-                } else {
-                    unreachable!()
+                match t {
+                    Token::ParenOpen => {
+                        let (args_fc, args) = self.paren_list(Self::parse_expr)?;
+                        lhs = Expression::Call {
+                            fc: lhs.fc().merge(args_fc),
+                            base: Box::new(lhs),
+                            args,
+                        };
+                    },
+                    Token::OpPowNum(n) => {
+                        self.next()?;
+                        lhs = Expression::InfixOp {
+                            fc: lhs.fc().merge(fc),
+                            op: InfixOp::Pow,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(Expression::IntegerLit {
+                                fc,
+                                mantissa: n,
+                                exponent: 0,
+                            }),
+                        };
+                    },
+                    _ => unreachable!(),
                 }
                 continue;
             }
@@ -363,6 +377,7 @@ fn infix_binding_power(t: Token<'_>) -> Option<(u8, u8, InfixOp)> {
 fn postfix_binding_power(t: Token<'_>) -> Option<(u8, ())> {
     match t {
         Token::ParenOpen => Some((255, ())),
+        Token::OpPowNum(_) => Some((91, ())),
         _ => None,
     }
 }
