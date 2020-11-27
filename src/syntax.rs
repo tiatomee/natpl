@@ -1,9 +1,21 @@
+use std::fmt::Display;
+
 use crate::tokenising::Span;
 
 pub type Name = String;
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Identifier(pub FC, pub Name);
+
+impl Identifier {
+    pub fn name_ref(&self) -> &Name {
+        &self.1
+    }
+
+    pub fn name(self) -> Name {
+        self.1
+    }
+}
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FC {
@@ -156,13 +168,6 @@ pub enum Expression {
 
     UnitOf(FC, Box<Expression>),
     Parenthesised(FC, Box<Expression>),
-
-    /// Syntactic sugar for multiplication
-    Juxtaposition {
-        fc: FC,
-        lhs: Box<Expression>,
-        rhs: Box<Expression>,
-    },
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -196,6 +201,23 @@ pub enum InfixOp {
     Eq,
     Neq,
     Gt,
+}
+
+impl Display for InfixOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            InfixOp::Add => "+",
+            InfixOp::Sub => "-",
+            InfixOp::Mul => "*",
+            InfixOp::Div => "/",
+            InfixOp::Mod => "mod",
+            InfixOp::Pow => "^",
+            InfixOp::Eq => "=",
+            InfixOp::Neq => "≠",
+            InfixOp::Gt => ">",
+        };
+        f.write_str(s)
+    }
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -264,7 +286,6 @@ impl HasFC for Expression {
             Expression::InfixOp { fc, .. } => *fc,
             Expression::UnitOf(fc, _) => *fc,
             Expression::Parenthesised(fc, _) => *fc,
-            Expression::Juxtaposition { fc, .. } => *fc,
         }
     }
 }
