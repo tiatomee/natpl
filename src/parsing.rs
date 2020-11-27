@@ -150,6 +150,7 @@ impl<'toks, 'src> Parser<'toks, 'src> {
                         };
                     }
                     Token::OpPowNum(n) => {
+                        self.next()?;
                         lhs = Expression::InfixOp {
                             fc: lhs.fc().merge(fc),
                             op: InfixOp::Pow,
