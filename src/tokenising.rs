@@ -39,7 +39,7 @@ pub enum Token<'input> {
     OpPow,
 
     #[regex(r"(⁰|¹|²|³|⁴|⁵|⁶|⁷|⁸|⁹)+", |lex| unicode_power_num(lex.slice()))]
-    OpPowNum(usize),
+    OpPowNum(u64),
 
     #[token("[")]
     BracketOpen,
@@ -60,23 +60,23 @@ pub enum Token<'input> {
     Identifier(&'input str),
 
     #[regex("[0-9]+", |lex| lex.slice().parse().ok())]
-    IntegerLit(usize),
+    IntegerLit(u64),
 
     #[regex(r"[0-9]+\.[0-9]+", |lex| {
         let mut parts = lex.slice().split('.');
-        let integer = parts.next()?.parse().ok()?;
-        let decimal = parts.next()?.parse().ok()?;
+        let integer = parts.next()?;
+        let decimal = parts.next()?;
         Some((integer, decimal))
     })]
-    FloatLit((usize, usize)),
+    FloatLit((&'input str, &'input str)),
 
     #[regex(r"[0-9]+\.[0-9]+x10\^-?[0-9]+", |lex| {
         let mut s = lex.slice().split("x10^");
         let (integer, decimal) = {
             let s = s.next()?;
             let mut parts = s.split('.');
-            let integer = parts.next()?.parse().ok()?;
-            let decimal = parts.next()?.parse().ok()?;
+            let integer = parts.next()?;
+            let decimal = parts.next()?;
             (integer, decimal)
         };
         let exp = s.next()?.parse().ok()?;
@@ -87,28 +87,28 @@ pub enum Token<'input> {
         let (integer, decimal) = {
             let s = s.next()?;
             let mut parts = s.split('.');
-            let integer = parts.next()?.parse().ok()?;
-            let decimal = parts.next()?.parse().ok()?;
+            let integer = parts.next()?;
+            let decimal = parts.next()?;
             (integer, decimal)
         };
         let exp = unicode_power_num(s.next()?)?;
-        Some((integer, decimal, exp as isize))
+        Some((integer, decimal, exp as i64))
     })]
-    ScientificFloatLit((usize, usize, isize)),
+    ScientificFloatLit((&'input str, &'input str, i64)),
 
     #[regex(r"[0-9]+x10\^(-)?[0-9]+", |lex| {
         let mut s = lex.slice().split("x10^");
-        let mantissa = s.next()?.parse().ok()?;
+        let mantissa = s.next()?;
         let exp = s.next()?.parse().ok()?;
         Some((mantissa, exp))
     })]
     #[regex(r"[0-9]++x10(⁰|¹|²|³|⁴|⁵|⁶|⁷|⁸|⁹)+", |lex| {
         let mut s = lex.slice().split("x10");
-        let mantissa = s.next()?.parse().ok()?;
+        let mantissa = s.next()?;
         let exp = unicode_power_num(s.next()?)?;
-        Some((mantissa, exp as isize))
+        Some((mantissa, exp as i64))
     })]
-    ScientificIntegerLit((usize, isize)),
+    ScientificIntegerLit((&'input str, i64)),
 
     #[error]
     // skip whitespace
@@ -118,8 +118,8 @@ pub enum Token<'input> {
     Error,
 }
 
-fn unicode_power_num(input: &str) -> Option<usize> {
-    fn unicode_pow_to_digit_val(c: char) -> Option<usize> {
+fn unicode_power_num(input: &str) -> Option<u64> {
+    fn unicode_pow_to_digit_val(c: char) -> Option<u64> {
         match c {
             '⁰' => Some(0),
             '¹' => Some(1),
@@ -135,7 +135,7 @@ fn unicode_power_num(input: &str) -> Option<usize> {
         }
     }
 
-    input.chars().try_fold(0usize, |acc, c| {
+    input.chars().try_fold(0u64, |acc, c| {
         acc.checked_mul(10)?
             .checked_add(unicode_pow_to_digit_val(c)?)
     })

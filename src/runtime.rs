@@ -1,10 +1,11 @@
-use std::collections::{HashMap, HashSet};
+use std::{str::FromStr, collections::{HashMap, HashSet}};
 
 use crate::{
     syntax::{Expression, HasFC, InfixOp, Item, LineItem, Name, PrefixOp, SiPrefix, FC},
     term::{Unit, Value, ValueKind},
 };
 
+use bigdecimal::BigDecimal;
 use thiserror::Error;
 
 #[derive(Default)]
@@ -102,27 +103,19 @@ impl Runtime {
         match expr {
             Expression::IntegerLit {
                 fc: _,
-                mantissa,
-                exponent,
+                val,
             } => {
-                let num: f64 = format!("{}e{}", mantissa, exponent).parse().unwrap();
                 Ok(Value {
-                    kind: ValueKind::Number(num),
+                    kind: ValueKind::Number(val.clone()),
                     unit: Unit::new(),
                 })
             }
             Expression::FloatLit {
                 fc: _,
-                mantissa_int,
-                mantissa_dec,
-                exponent,
+                val,
             } => {
-                // forgive me
-                let num: f64 = format!("{}.{}e{}", mantissa_int, mantissa_dec, exponent)
-                    .parse()
-                    .unwrap();
                 Ok(Value {
-                    kind: ValueKind::Number(num),
+                    kind: ValueKind::Number(val.clone()),
                     unit: Unit::new(),
                 })
             }
@@ -163,7 +156,7 @@ impl Runtime {
                     },
                     crate::syntax::PrefixOp::Neg => match &mut val.kind {
                         ValueKind::Number(num) => {
-                            *num *= -1.0;
+                            *num = -&*num;
                             Ok(val)
                         }
                         ValueKind::FunctionRef(_) => {
@@ -176,7 +169,7 @@ impl Runtime {
             Expression::UnitOf(_, expr) => {
                 let val = self.eval_expr(expr)?;
                 Ok(Value {
-                    kind: ValueKind::Number(1.0),
+                    kind: ValueKind::Number(BigDecimal::from(1)),
                     unit: val.unit,
                 })
             }
@@ -189,7 +182,7 @@ impl Runtime {
             Some(val.clone())
         } else if self.units.contains(name) {
             Some(Value {
-                kind: ValueKind::Number(1.0),
+                kind: ValueKind::Number(BigDecimal::from(1)),
                 unit: Unit::new_named(name.clone()),
             })
         } else if self.functions.contains_key(name) {
@@ -232,11 +225,11 @@ impl Runtime {
                 unit,
             }),
             (InfixOp::Mod, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
-                kind: ValueKind::Number(a.rem_euclid(*b)),
+                kind: ValueKind::Number(a % b),
                 unit,
             }),
             (InfixOp::Pow, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
-                kind: ValueKind::Number(a.powf(*b)),
+                kind: todo!(),
                 unit,
             }),
             (InfixOp::Eq, ValueKind::Number(_), ValueKind::Number(_)) => {
@@ -255,20 +248,20 @@ impl Runtime {
 
 fn apply_prefix(fc: FC, prefix: SiPrefix, mut val: Value) -> Result<Value, EvalError> {
     let kind = match (prefix, &val.kind) {
-        (SiPrefix::Femto, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000_000_000_000.0),
-        (SiPrefix::Pico, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000_000_000.0),
-        (SiPrefix::Nano, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000_000.0),
-        (SiPrefix::Micro, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000.0),
-        (SiPrefix::Milli, ValueKind::Number(x)) => ValueKind::Number(x / 1_000.0),
-        (SiPrefix::Centi, ValueKind::Number(x)) => ValueKind::Number(x / 100.0),
-        (SiPrefix::Deci, ValueKind::Number(x)) => ValueKind::Number(x / 10.0),
-        (SiPrefix::Deca, ValueKind::Number(x)) => ValueKind::Number(x * 10.0),
-        (SiPrefix::Hecto, ValueKind::Number(x)) => ValueKind::Number(x * 100.0),
-        (SiPrefix::Kilo, ValueKind::Number(x)) => ValueKind::Number(x * 1_000.0),
-        (SiPrefix::Mega, ValueKind::Number(x)) => ValueKind::Number(x * 1_000_000.0),
-        (SiPrefix::Giga, ValueKind::Number(x)) => ValueKind::Number(x * 1_000_000_000.0),
-        (SiPrefix::Tera, ValueKind::Number(x)) => ValueKind::Number(x * 1_000_000_000_000.0),
-        (SiPrefix::Peta, ValueKind::Number(x)) => ValueKind::Number(x * 1_000_000_000_000_000.0),
+        (SiPrefix::Femto, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000_000_000_000u64),
+        (SiPrefix::Pico, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000_000_000u64),
+        (SiPrefix::Nano, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000_000u64),
+        (SiPrefix::Micro, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000u64),
+        (SiPrefix::Milli, ValueKind::Number(x)) => ValueKind::Number(x / 1_000u64),
+        (SiPrefix::Centi, ValueKind::Number(x)) => ValueKind::Number(x / 100u64),
+        (SiPrefix::Deci, ValueKind::Number(x)) => ValueKind::Number(x / 10u64),
+        (SiPrefix::Deca, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(10u64)),
+        (SiPrefix::Hecto, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(100u64)),
+        (SiPrefix::Kilo, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000u64)),
+        (SiPrefix::Mega, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000_000u64)),
+        (SiPrefix::Giga, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000_000_000u64)),
+        (SiPrefix::Tera, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000_000_000_000u64)),
+        (SiPrefix::Peta, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000_000_000_000_000u64)),
         (_, ValueKind::FunctionRef(_)) => return Err(EvalError::InvalidSiPrefix(fc, prefix, val)),
     };
     val.kind = kind;

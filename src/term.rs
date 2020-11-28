@@ -1,4 +1,5 @@
 use std::{collections::BTreeMap, fmt::Display};
+use bigdecimal::BigDecimal;
 
 use crate::syntax::Name;
 
@@ -11,7 +12,7 @@ pub struct Value {
 #[derive(Debug, Clone)]
 pub enum ValueKind {
     FunctionRef(Name),
-    Number(f64),
+    Number(BigDecimal),
 }
 
 impl Display for ValueKind {

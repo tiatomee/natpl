@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+use bigdecimal::BigDecimal;
+
 use crate::tokenising::Span;
 
 pub type Name = String;
@@ -129,14 +131,11 @@ impl DeclarationOrEquality {
 pub enum Expression {
     IntegerLit {
         fc: FC,
-        mantissa: usize,
-        exponent: isize,
+        val: BigDecimal,
     },
     FloatLit {
         fc: FC,
-        mantissa_int: usize,
-        mantissa_dec: usize,
-        exponent: isize,
+        val: BigDecimal,
     },
 
     MaybeUnitPrefix {
