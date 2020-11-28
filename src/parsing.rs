@@ -28,6 +28,10 @@ impl<'toks, 'src> Parser<'toks, 'src> {
     pub fn parse_line(line_toks: &'toks [(Token<'src>, Span)]) -> Result<'src, LineItem> {
         let mut this = Self { toks: line_toks };
 
+        if line_toks.is_empty() {
+            return Ok(LineItem::Empty);
+        }
+
         if let Ok((fc, name)) = this.parse_unit_declaration() {
             return Ok(LineItem::UnitDeclaration(fc, name));
         } else {
@@ -220,30 +224,21 @@ impl<'toks, 'src> Parser<'toks, 'src> {
                 }
             }
             Token::IntegerLit(val) => {
-                let val = BigDecimal::from(val);
-                Ok(Expression::IntegerLit {
-                    fc,
-                    val,
-                })
-            },
-            Token::FloatLit((int, dec)) => {
-                Ok(Expression::FloatLit {
-                    fc,
-                    val: BigDecimal::from_str(&format!("{}.{}", int, dec)).unwrap(),
-                })
-            },
-            Token::ScientificFloatLit((int, dec, exp)) => {
-                Ok(Expression::FloatLit {
-                    fc,
-                    val: BigDecimal::from_str(&format!("{}.{}e{}", int, dec, exp)).unwrap(),
-                })
-            },
-            Token::ScientificIntegerLit((val, exp)) => {
-                Ok(Expression::FloatLit {
-                    fc,
-                    val: BigDecimal::from_str(&format!("{}e{}", val, exp)).unwrap(),
-                })
-            },
+                let val = BigDecimal::from_str(val).unwrap();
+                Ok(Expression::IntegerLit { fc, val })
+            }
+            Token::FloatLit((int, dec)) => Ok(Expression::FloatLit {
+                fc,
+                val: BigDecimal::from_str(&format!("{}.{}", int, dec)).unwrap(),
+            }),
+            Token::ScientificFloatLit((int, dec, exp)) => Ok(Expression::FloatLit {
+                fc,
+                val: BigDecimal::from_str(&format!("{}.{}e{}", int, dec, exp)).unwrap(),
+            }),
+            Token::ScientificIntegerLit((val, exp)) => Ok(Expression::FloatLit {
+                fc,
+                val: BigDecimal::from_str(&format!("{}e{}", val, exp)).unwrap(),
+            }),
             t => Err(ParseError::UnexpectedToken(t, fc)),
         }
     }

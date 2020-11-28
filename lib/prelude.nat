@@ -3,7 +3,7 @@ unit second
 unit kilogram
 
 m = meter
-L = 10 cm * 10 cm * 10 cm
+L = (0.1 m)^3
 
 s = second
 min = 60 s

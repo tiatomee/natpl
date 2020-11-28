@@ -1,0 +1,24 @@
+# Create a solution for ligation of an insert and
+# a vector. 25ng of the vector should be used.
+#
+# The solution should have a 1:3 molar ratio of
+# vector:insert
+
+unit basepair
+bp = basepair
+
+# Size of the molecules
+is = 1.7 kbp
+vs = 3.0 kbp
+
+# Concentrations
+ic = 3.2 ng/μL
+vc = 10 ng/μL
+
+# weight of one ratio insert
+iw1 = (is / vs) * 25ng
+iw3 = 3 iw1
+
+# Volumes
+vv = 25ng / vc
+iv = iw3 / ic

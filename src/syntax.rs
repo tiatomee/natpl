@@ -61,6 +61,7 @@ pub enum Item {
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum LineItem {
+    Empty,
     UnitDeclaration(FC, Identifier),
     MaybeDeclarationOrEqualityExpression(DeclarationOrEquality),
     PrintedExpression(FC, Expression),
@@ -250,6 +251,7 @@ impl HasFC for Item {
 impl HasFC for LineItem {
     fn fc(&self) -> FC {
         match self {
+            LineItem::Empty => FC { start: 0, end: 0 },
             LineItem::UnitDeclaration(fc, _) => *fc,
             LineItem::MaybeDeclarationOrEqualityExpression(decl) => decl.fc(),
             LineItem::PrintedExpression(fc, _) => *fc,

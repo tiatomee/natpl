@@ -1,11 +1,11 @@
-use std::{str::FromStr, collections::{HashMap, HashSet}};
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     syntax::{Expression, HasFC, InfixOp, Item, LineItem, Name, PrefixOp, SiPrefix, FC},
     term::{Unit, Value, ValueKind},
 };
 
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, ToPrimitive};
 use thiserror::Error;
 
 #[derive(Default)]
@@ -21,12 +21,15 @@ impl Runtime {
     }
 
     pub fn eval_line_item(&mut self, item: LineItem) -> Result<EvalResult, ItemError> {
-        let item = self.line_item_to_item(item);
-        self.eval_item(item)
+        match self.line_item_to_item(item) {
+            Some(item) => self.eval_item(item),
+            None => Ok(EvalResult::Empty),
+        }
     }
 
-    pub fn line_item_to_item(&mut self, item: LineItem) -> Item {
-        match item {
+    pub fn line_item_to_item(&mut self, item: LineItem) -> Option<Item> {
+        let it = match item {
+            LineItem::Empty => return None,
             LineItem::UnitDeclaration(fc, name) => Item::UnitDeclaration(fc, name),
             LineItem::MaybeDeclarationOrEqualityExpression(decl) => {
                 let name = decl.declaration_name();
@@ -43,7 +46,8 @@ impl Runtime {
             }
             LineItem::PrintedExpression(fc, expr) => Item::PrintedExpression(fc, expr),
             LineItem::SilentExpression(expr) => Item::SilentExpression(expr),
-        }
+        };
+        Some(it)
     }
 
     fn eval_item(&mut self, item: Item) -> Result<EvalResult, ItemError> {
@@ -101,24 +105,14 @@ impl Runtime {
 
     fn eval_expr(&self, expr: &Expression) -> Result<Value, EvalError> {
         match expr {
-            Expression::IntegerLit {
-                fc: _,
-                val,
-            } => {
-                Ok(Value {
-                    kind: ValueKind::Number(val.clone()),
-                    unit: Unit::new(),
-                })
-            }
-            Expression::FloatLit {
-                fc: _,
-                val,
-            } => {
-                Ok(Value {
-                    kind: ValueKind::Number(val.clone()),
-                    unit: Unit::new(),
-                })
-            }
+            Expression::IntegerLit { fc: _, val } => Ok(Value {
+                kind: ValueKind::Number(val.clone()),
+                unit: Unit::new(),
+            }),
+            Expression::FloatLit { fc: _, val } => Ok(Value {
+                kind: ValueKind::Number(val.clone()),
+                unit: Unit::new(),
+            }),
             Expression::MaybeUnitPrefix {
                 fc,
                 name,
@@ -205,7 +199,7 @@ impl Runtime {
         let lhs = self.eval_expr(lhs)?;
         let rhs = self.eval_expr(rhs)?;
 
-        let unit = infix_unit(fc, op, &lhs.unit, &rhs.unit)?;
+        let unit = infix_unit(fc, op, &lhs, &rhs)?;
 
         match (op, &lhs.kind, &rhs.kind) {
             (InfixOp::Add, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
@@ -228,10 +222,28 @@ impl Runtime {
                 kind: ValueKind::Number(a % b),
                 unit,
             }),
-            (InfixOp::Pow, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
-                kind: todo!(),
-                unit,
-            }),
+            (InfixOp::Pow, ValueKind::Number(a), ValueKind::Number(b)) => {
+                let pow: isize = if b.is_integer() {
+                    b.to_isize().unwrap()
+                } else {
+                    unimplemented!("Floating point power is not implemented")
+                };
+
+                let mut res = BigDecimal::from(1);
+
+                for _ in 0..pow.abs() {
+                    res = res * a;
+                }
+
+                if pow.is_negative() {
+                    res = res.inverse();
+                }
+
+                Ok(Value {
+                    kind: ValueKind::Number(res),
+                    unit,
+                })
+            }
             (InfixOp::Eq, ValueKind::Number(_), ValueKind::Number(_)) => {
                 todo!()
             }
@@ -258,34 +270,62 @@ fn apply_prefix(fc: FC, prefix: SiPrefix, mut val: Value) -> Result<Value, EvalE
         (SiPrefix::Deca, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(10u64)),
         (SiPrefix::Hecto, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(100u64)),
         (SiPrefix::Kilo, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000u64)),
-        (SiPrefix::Mega, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000_000u64)),
-        (SiPrefix::Giga, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000_000_000u64)),
-        (SiPrefix::Tera, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000_000_000_000u64)),
-        (SiPrefix::Peta, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000_000_000_000_000u64)),
+        (SiPrefix::Mega, ValueKind::Number(x)) => {
+            ValueKind::Number(x * BigDecimal::from(1_000_000u64))
+        }
+        (SiPrefix::Giga, ValueKind::Number(x)) => {
+            ValueKind::Number(x * BigDecimal::from(1_000_000_000u64))
+        }
+        (SiPrefix::Tera, ValueKind::Number(x)) => {
+            ValueKind::Number(x * BigDecimal::from(1_000_000_000_000u64))
+        }
+        (SiPrefix::Peta, ValueKind::Number(x)) => {
+            ValueKind::Number(x * BigDecimal::from(1_000_000_000_000_000u64))
+        }
         (_, ValueKind::FunctionRef(_)) => return Err(EvalError::InvalidSiPrefix(fc, prefix, val)),
     };
     val.kind = kind;
     Ok(val)
 }
 
-fn infix_unit(fc: FC, op: InfixOp, lhs: &Unit, rhs: &Unit) -> Result<Unit, UnitError> {
+fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, UnitError> {
     match op {
         InfixOp::Add | InfixOp::Sub | InfixOp::Mod => {
-            if lhs == rhs {
-                Ok(lhs.clone())
+            if lhs.unit == rhs.unit {
+                Ok(lhs.unit.clone())
             } else {
                 Err(UnitError::IncompatibleUnits(
                     fc,
                     op,
-                    lhs.clone(),
-                    rhs.clone(),
+                    lhs.unit.clone(),
+                    rhs.unit.clone(),
                 ))
             }
         }
 
-        InfixOp::Mul => Ok(lhs.multiply(rhs)),
-        InfixOp::Div => Ok(lhs.divide(rhs)),
-        InfixOp::Pow => todo!(),
+        InfixOp::Mul => Ok(lhs.unit.multiply(&rhs.unit)),
+        InfixOp::Div => Ok(lhs.unit.divide(&rhs.unit)),
+        InfixOp::Pow => {
+            if rhs.unit != Unit::new() {
+                return Err(UnitError::IncompatibleUnits(
+                    fc,
+                    op,
+                    lhs.unit.clone(),
+                    rhs.unit.clone(),
+                ));
+            }
+            match &rhs.kind {
+                ValueKind::Number(n) if n.is_integer() => {
+                    let n = n.to_isize().unwrap();
+                    Ok(lhs.unit.pow(n))
+                }
+                _ => Err(UnitError::InvalidPowerValue(
+                    fc,
+                    lhs.unit.clone(),
+                    rhs.kind.clone(),
+                )),
+            }
+        }
         InfixOp::Eq => todo!(),
         InfixOp::Neq => todo!(),
         InfixOp::Gt => todo!(),
@@ -333,4 +373,7 @@ pub enum EvalError {
 pub enum UnitError {
     #[error("Incompatible units ({}) and ({}) for operation {:?}", .2, .3, .1)]
     IncompatibleUnits(FC, InfixOp, Unit, Unit),
+
+    #[error("Invalid power on unit ({}): {}", .1, .2)]
+    InvalidPowerValue(FC, Unit, ValueKind),
 }

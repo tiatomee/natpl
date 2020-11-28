@@ -59,8 +59,8 @@ pub enum Token<'input> {
     #[regex("(\\p{XID_Start}|_)(\\p{XID_Continue}|')*")]
     Identifier(&'input str),
 
-    #[regex("[0-9]+", |lex| lex.slice().parse().ok())]
-    IntegerLit(u64),
+    #[regex("[0-9]+")]
+    IntegerLit(&'input str),
 
     #[regex(r"[0-9]+\.[0-9]+", |lex| {
         let mut parts = lex.slice().split('.');

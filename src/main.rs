@@ -14,6 +14,7 @@ pub mod tokenising;
 pub mod runtime;
 pub mod term;
 
+pub mod util;
 
 #[derive(Debug, Error)]
 pub enum LoadFileError {
@@ -22,7 +23,6 @@ pub enum LoadFileError {
     #[error("Parse error {}", .0)]
     ParseError(String),
 }
-
 
 fn load_file(rt: &mut Runtime, content: &str) -> Result<(), LoadFileError> {
     for (line, source) in content.lines().enumerate() {
@@ -54,17 +54,12 @@ fn load_file(rt: &mut Runtime, content: &str) -> Result<(), LoadFileError> {
                 );
             }
         }
-
     }
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn repl(rt: &mut runtime::Runtime) -> Result<(), Box<dyn std::error::Error>> {
     let mut rl = rustyline::Editor::<()>::new();
-
-    let mut rt = runtime::Runtime::new();
-
-    load_file(&mut rt, include_str!("../lib/prelude.nat"))?;
 
     let prompt = format!("{} ", ">".blue());
 
@@ -92,12 +87,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let range = expr.fc();
                             let input_slice = &line[range.start..range.end];
 
-                            let response = format!(
-                                "{} => {:<20} [{}]",
-                                input_slice,
-                                val.kind.to_string(),
-                                val.unit
-                            );
+                            let value_part = format!("{} => {}", input_slice, val.kind);
+                            let response = format!("{:<20} [{}]", value_part, val.unit);
                             println!("{} {}", "✔".green(), response.bright_black());
                         }
                         Err(err) => {
@@ -120,4 +111,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args = std::env::args().skip(1).collect::<Vec<_>>();
+
+    let mut rt = Runtime::new();
+    load_file(&mut rt, include_str!("../lib/prelude.nat"))?;
+
+    if let Some(file_path) = args.first() {
+        let content = std::fs::read_to_string(file_path)?;
+        load_file(&mut rt, &content)?;
+    }
+
+    repl(&mut rt)
 }
