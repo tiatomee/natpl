@@ -4,9 +4,6 @@
 # The solution should have a 1:3 molar ratio of
 # vector:insert
 
-unit basepair
-bp = basepair
-
 # Size of the molecules
 is = 1.7 kbp
 vs = 3.0 kbp

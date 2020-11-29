@@ -120,7 +120,7 @@ fn repl(rt: &mut runtime::Runtime) -> Result<(), Box<dyn std::error::Error>> {
                                             (val_kind, name_with_prefix(&name, pre))
                                         }),
                                 )
-                                .take(2);
+                                .take(3);
 
                             for (i, (val, unit)) in candidates.enumerate() {
                                 let marker = if i == 0 {
@@ -177,7 +177,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     repl(&mut rt)
 }
 
-type Rating = BigDecimal;
+type Rating = u64;
 
 fn closest_match(
     val_kind: &ValueKind,
@@ -210,18 +210,10 @@ fn closest_match(
             _ => continue 'matches,
         };
 
-        let handicap = if m == &BigDecimal::from(1) {
-            // base-unit
-            0.2
-        } else {
-            // derived unit
-            1.0
-        };
-
         for prefix in prefixes {
             let m = m * prefix.value();
 
-            let dist = num_distance(v, &m, handicap);
+            let dist = num_distance(v, &m, 1.0);
 
             rating
                 .entry(name.clone())
@@ -229,13 +221,13 @@ fn closest_match(
                     if dist < *rating {
                         *pre = Some(*prefix);
                         *val = ValueKind::Number(v / m);
-                        *rating = dist.clone();
+                        *rating = dist;
                     }
                 })
                 .or_insert_with(|| (Some(*prefix), val.clone(), dist));
         }
 
-        let dist = num_distance(v, &m, handicap * 0.5);
+        let dist = num_distance(v, &m, 0.5);
 
         rating
             .entry(name.clone())
@@ -243,14 +235,19 @@ fn closest_match(
                 if dist < *rating {
                     *pre = None;
                     *val = ValueKind::Number(v / m);
-                    *rating = dist.clone();
+                    *rating = dist;
                 }
             })
             .or_insert_with(|| (None, val.clone(), dist));
     }
 
     let mut ratings = rating.into_iter().collect::<Vec<_>>();
-    ratings.sort_by(|(_, (_, _, a)), (_, (_, _, b))| a.cmp(b));
+    ratings.sort_by(|(na, (pa, _, ra)), (nb, (pb, _, rb))| {
+        pa.map(|s| s.sort_towards_middle())
+            .cmp(&pb.map(|s| s.sort_towards_middle()))
+            .then(ra.cmp(rb))
+            .then(na.len().cmp(&nb.len()))
+    });
     ratings
         .into_iter()
         .map(|(name, (prefix, val, _))| (name, prefix, val))
@@ -258,16 +255,11 @@ fn closest_match(
 
 fn num_distance(a: &BigDecimal, b: &BigDecimal, handicap: f64) -> Rating {
     let div = a / b;
+    let div_abs = div.abs();
 
-    let divi = if let Some(val) = div.to_i128() {
-        val.abs()
+    if div_abs < BigDecimal::from(1) || div_abs > BigDecimal::from(999) {
+        Rating::max_value()
     } else {
-        return BigDecimal::from(1000 * 1000);
-    };
-
-    if (1..=999).contains(&divi) {
-        ((divi as f64 * 1000.0 * handicap) as i64).into()
-    } else {
-        ((1000.0 * 1000.0 * handicap) as i64).into()
+        (div_abs.to_f64().unwrap() * handicap) as Rating
     }
 }

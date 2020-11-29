@@ -9,11 +9,12 @@ unit s = second
 unit min = 60 s
 unit hour = 60 min
 unit day = 24 hour
-unit week = 7 day
-unit month = 4 week
-unit year = 12 month
 
 unit kg = kilogram
 unit g = kg / 1000
+unit ton = 1000 kg
 
 unit mol
+
+unit basepair
+unit bp = basepair

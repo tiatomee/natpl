@@ -211,6 +211,18 @@ impl SiPrefix {
         }
     }
 
+    pub fn sort_towards_middle(&self) -> impl Ord {
+        #[derive(Ord, PartialOrd, Eq, PartialEq)]
+        struct T(BigDecimal);
+
+        let val = self.value();
+        if !val.is_integer() {
+            T(val.inverse())
+        } else {
+            T(val)
+        }
+    }
+
     pub fn short_prefix(&self) -> &'static str {
         match self {
             SiPrefix::Femto => "f",
