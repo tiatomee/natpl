@@ -218,7 +218,7 @@ impl Runtime {
                 match op {
                     crate::syntax::PrefixOp::Pos => match &mut val.kind {
                         ValueKind::Number(_) => Ok(val),
-                        ValueKind::FunctionRef(_) => {
+                        ValueKind::Bool(_) | ValueKind::FunctionRef(_) => {
                             Err(EvalError::InvalidPrefixOperator(*fc, *op, val))
                         }
                     },
@@ -227,7 +227,7 @@ impl Runtime {
                             *num = -&*num;
                             Ok(val)
                         }
-                        ValueKind::FunctionRef(_) => {
+                        ValueKind::Bool(_) | ValueKind::FunctionRef(_) => {
                             Err(EvalError::InvalidPrefixOperator(*fc, *op, val))
                         }
                     },
@@ -322,15 +322,26 @@ impl Runtime {
                     unit,
                 })
             }
-            (InfixOp::Eq, ValueKind::Number(_), ValueKind::Number(_)) => {
-                todo!()
-            }
-            (InfixOp::Neq, ValueKind::Number(_), ValueKind::Number(_)) => {
-                todo!()
-            }
-            (InfixOp::Gt, ValueKind::Number(_), ValueKind::Number(_)) => {
-                todo!()
-            }
+            (InfixOp::Eq, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
+                kind: ValueKind::Bool(a == b),
+                unit,
+            }),
+            (InfixOp::Eq, ValueKind::Bool(a), ValueKind::Bool(b)) => Ok(Value {
+                kind: ValueKind::Bool(a == b),
+                unit,
+            }),
+            (InfixOp::Neq, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
+                kind: ValueKind::Bool(a != b),
+                unit,
+            }),
+            (InfixOp::Neq, ValueKind::Bool(a), ValueKind::Bool(b)) => Ok(Value {
+                kind: ValueKind::Bool(a != b),
+                unit,
+            }),
+            (InfixOp::Gt, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
+                kind: ValueKind::Bool(a > b),
+                unit,
+            }),
             (op, _, _) => Err(EvalError::InvalidInfixOperator(fc, op, lhs, rhs)),
         }
     }
@@ -339,7 +350,9 @@ impl Runtime {
 fn apply_prefix(fc: FC, prefix: SiPrefix, mut val: Value) -> Result<Value, EvalError> {
     let kind = match &val.kind {
         ValueKind::Number(n) => ValueKind::Number(prefix.value() * n),
-        ValueKind::FunctionRef(_) => return Err(EvalError::InvalidSiPrefix(fc, prefix, val)),
+        ValueKind::Bool(_) | ValueKind::FunctionRef(_) => {
+            return Err(EvalError::InvalidSiPrefix(fc, prefix, val))
+        }
     };
     val.kind = kind;
     Ok(val)
@@ -383,9 +396,30 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
                 )),
             }
         }
-        InfixOp::Eq => todo!(),
-        InfixOp::Neq => todo!(),
-        InfixOp::Gt => todo!(),
+        InfixOp::Eq | InfixOp::Neq => {
+            if lhs.unit == rhs.unit {
+                Ok(Unit::new())
+            } else {
+                Err(UnitError::IncompatibleUnits(
+                    fc,
+                    op,
+                    lhs.unit.clone(),
+                    rhs.unit.clone(),
+                ))
+            }
+        }
+        InfixOp::Gt => {
+            if lhs.unit == rhs.unit {
+                Ok(Unit::new())
+            } else {
+                Err(UnitError::IncompatibleUnits(
+                    fc,
+                    op,
+                    lhs.unit.clone(),
+                    rhs.unit.clone(),
+                ))
+            }
+        }
     }
 }
 
@@ -423,13 +457,13 @@ pub enum EvalError {
     #[error("Undefined name: {}", .1)]
     UndefinedName(FC, Name),
 
-    #[error("Invalid prefix operator {:?} on value {:?}", .1, .2)]
+    #[error("Invalid prefix operator {:?} on value {} [{}]", .1, .2.kind, .2.unit)]
     InvalidPrefixOperator(FC, PrefixOp, Value),
 
-    #[error("Invalid infix operator {:?} on {:?} and {:?}", .1, .2, .3)]
+    #[error("Invalid infix operator {:?} on {} [{}] and {} [{}]", .1, .2.kind, .2.unit, .3.kind, .3.unit)]
     InvalidInfixOperator(FC, InfixOp, Value, Value),
 
-    #[error("Invalid SI-prefix {:?} on value {:?}", .1, .2)]
+    #[error("Invalid SI-prefix {:?} on value {} [{}]", .1, .2.kind, .2.unit)]
     InvalidSiPrefix(FC, SiPrefix, Value),
 
     #[error("Unit error: {}", .0)]

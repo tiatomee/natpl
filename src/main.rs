@@ -147,6 +147,18 @@ fn repl(rt: &mut runtime::Runtime) -> Result<(), Box<dyn std::error::Error>> {
                                 println!("{} {}", marker, line.bright_black());
                             }
                         }
+                        Ok(EvalResult::Value(Value {
+                            kind: ValueKind::Bool(true),
+                            ..
+                        })) => {
+                            eprintln!("{} {}", "✔".green(), "true".bright_black());
+                        }
+                        Ok(EvalResult::Value(Value {
+                            kind: ValueKind::Bool(false),
+                            ..
+                        })) => {
+                            eprintln!("{} {}", "✘".red(), "false".bright_black());
+                        }
                         Ok(EvalResult::Value(val)) => {
                             let candidates = unit_matches(rt, &val);
 
