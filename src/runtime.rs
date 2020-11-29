@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
     syntax::{Expression, HasFC, InfixOp, Item, LineItem, Name, PrefixOp, SiPrefix, FC},
-    term::{Unit, Value, ValueKind},
+    value_unit::{Unit, Value, ValueKind},
 };
 
 use bigdecimal::{BigDecimal, ToPrimitive};

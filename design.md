@@ -32,12 +32,14 @@ time = 5 second
 speed = distance / time
 ```
 
-Because units are normal values, unit aliases can be created as
-variables.
+Units can be aliased, in which case they can be used in creating nicer output
+(for example `2.1 min` instead of `126 second`).
+
+Unit aliases behave like variables in all other ways.
 
 ```
-m = meter
-s = second
+unit m = meter
+unit s = second
 
 distance = 12 m
 time = 5 s

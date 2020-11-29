@@ -1,0 +1,13 @@
+distance = 12 meter
+
+time = 5 second
+
+> distance
+> second
+
+speed = distance / second
+
+# check the unit
+[speed] = meter/second
+
+> speed * 100s in km

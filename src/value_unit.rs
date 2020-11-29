@@ -1,7 +1,9 @@
 use bigdecimal::BigDecimal;
 use std::{collections::BTreeMap, fmt::Display};
 
-use crate::syntax::Name;
+use crate::{
+    scinot_parsing::dec_in_scientific_notation, scinot_parsing::max_precision, syntax::Name,
+};
 
 #[derive(Debug, Clone)]
 pub struct Value {
@@ -21,7 +23,7 @@ impl Display for ValueKind {
         match self {
             ValueKind::FunctionRef(name) => f.write_fmt(format_args!("<function {}>", name)),
             ValueKind::Number(num) => {
-                let (int, dec, exp) = crate::util::dec_in_scientific_notation(&num.normalized());
+                let (int, dec, exp) = dec_in_scientific_notation(&num.normalized());
 
                 let exp_str = if exp == 0 {
                     "".to_string()
@@ -48,7 +50,7 @@ impl Display for ValueKind {
                 } else if dec.is_empty() {
                     f.write_fmt(format_args!("{}{}", int, exp_str))
                 } else {
-                    let dec = crate::util::dec_with_max_precision(&dec, 3);
+                    let dec = max_precision(&dec, 3);
                     f.write_fmt(format_args!("{}.{}{}", int, dec, exp_str))
                 }
             }

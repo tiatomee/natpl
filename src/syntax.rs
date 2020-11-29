@@ -19,6 +19,7 @@ impl Identifier {
     }
 }
 
+/// File context storing a span of the input
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FC {
     pub start: usize,
@@ -84,6 +85,8 @@ pub enum DeclarationLhs {
     },
 }
 
+/// Equality or declaration of variables have the same syntax and
+/// can only be disambiguated at runtime.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct DeclarationOrEquality {
     pub fc: FC,
@@ -215,6 +218,8 @@ impl SiPrefix {
         }
     }
 
+    /// This method can be used when trying to find the prefix
+    /// "closest" to the base unit.
     pub fn sort_towards_middle(&self) -> impl Ord {
         #[derive(Ord, PartialOrd, Eq, PartialEq)]
         struct T(BigDecimal);
