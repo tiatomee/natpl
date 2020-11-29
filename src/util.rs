@@ -5,7 +5,7 @@ pub fn dec_in_scientific_notation(d: &BigDecimal) -> (String, String, i64) {
 
     let num_str = num.to_string();
 
-    let (int_str, dec_str) = if num_str.starts_with("-") {
+    let (int_str, dec_str) = if num_str.starts_with('-') {
         num_str.split_at(2)
     } else {
         num_str.split_at(1)

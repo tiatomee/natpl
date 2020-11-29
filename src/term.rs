@@ -9,7 +9,7 @@ pub struct Value {
     pub unit: Unit,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ValueKind {
     FunctionRef(Name),
     Number(BigDecimal),
@@ -22,15 +22,21 @@ impl Display for ValueKind {
             ValueKind::Number(num) => {
                 let (int, dec, exp) = crate::util::dec_in_scientific_notation(&num.normalized());
 
-                if dec.len() <= 3 && (-3..3).contains(&exp) {
-                    f.write_fmt(format_args!("{}", num))
-                } else if dec.len() < 3 && (-3..0).contains(&exp) {
+                let exp_str = if exp == 0 {
+                    "".to_string()
+                } else {
+                    format!("x10^{}", exp)
+                };
+
+                if (dec.len() <= 3 && (-3..3).contains(&exp))
+                    || (dec.len() < 3 && (-3..0).contains(&exp))
+                {
                     f.write_fmt(format_args!("{}", num))
                 } else if dec.is_empty() {
-                    f.write_fmt(format_args!("{}x10^{}", int, exp))
+                    f.write_fmt(format_args!("{}{}", int, exp_str))
                 } else {
                     let dec = crate::util::dec_with_max_precision(&dec, 3);
-                    f.write_fmt(format_args!("{}.{}x10^{}", int, dec, exp))
+                    f.write_fmt(format_args!("{}.{}{}", int, dec, exp_str))
                 }
             }
         }
@@ -51,6 +57,19 @@ impl Unit {
         let mut this = Self::new();
         this.parts.insert(name, 1);
         this
+    }
+
+    pub fn singleton(&self) -> Option<&Name> {
+        if self.parts.len() != 1 {
+            None
+        } else {
+            let (name, p) = self.parts.iter().next()?;
+            if *p != 1 {
+                None
+            } else {
+                Some(name)
+            }
+        }
     }
 
     pub fn multiply(&self, other: &Unit) -> Unit {

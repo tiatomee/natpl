@@ -1,10 +1,14 @@
+use std::collections::HashMap;
+
+use bigdecimal::{BigDecimal, ToPrimitive};
 use runtime::{EvalResult, Runtime};
 use rustyline::error::ReadlineError;
 
 use owo_colors::OwoColorize;
+use term::ValueKind;
 use thiserror::Error;
 
-use syntax::HasFC;
+use syntax::{HasFC, Name, SiPrefix};
 
 pub mod syntax;
 
@@ -80,15 +84,61 @@ fn repl(rt: &mut runtime::Runtime) -> Result<(), Box<dyn std::error::Error>> {
                     Ok(item) => match rt.eval_line_item(item) {
                         Ok(EvalResult::Empty) => {}
                         Ok(EvalResult::Value(val)) => {
-                            let response = format!("{:<20} [{}]", val.kind.to_string(), val.unit);
-                            println!("{} {}", "✔".green(), response.bright_black());
+                            fn name_with_prefix(name: &str, prefix: Option<SiPrefix>) -> String {
+                                if let Some(pre) = prefix {
+                                    if name.len() <= 2 {
+                                        format!("{}{}", pre.short_prefix(), name)
+                                    } else {
+                                        format!("{}{}", pre.full_prefix(), name)
+                                    }
+                                } else {
+                                    name.to_string()
+                                }
+                            }
+
+                            let units = rt.find_unit_likes(&val.unit);
+                            let mut matches = closest_match(&val.kind, units);
+
+                            // Iterator speghetti!!
+                            // Try to take the best candidate, if it's actually anything
+                            // unique (not `s` vs second)
+                            let candidates = matches
+                                .next()
+                                .into_iter()
+                                .filter(|(_, _, val_kind)| val_kind != &val.kind)
+                                .map(|(name, pre, val_kind)| {
+                                    (val_kind, name_with_prefix(&name, pre))
+                                })
+                                // Then take the "raw" unit, this one is always printed
+                                // as a kind of fallback in case the suggestion is not good.
+                                .chain(Some((val.kind.clone(), val.unit.to_string())).into_iter())
+                                // Then the rest of the candidates (that are unique)
+                                .chain(
+                                    matches
+                                        .filter(|(_, _, val_kind)| val_kind != &val.kind)
+                                        .map(|(name, pre, val_kind)| {
+                                            (val_kind, name_with_prefix(&name, pre))
+                                        }),
+                                )
+                                .take(2);
+
+                            for (i, (val, unit)) in candidates.enumerate() {
+                                let marker = if i == 0 {
+                                    format!("{}", "✔".green())
+                                } else {
+                                    format!("{}", "⇒".bright_black())
+                                };
+
+                                let response = format!("{:<12} [{}]", val.to_string(), unit);
+                                println!("{} {}", marker, response.bright_black());
+                            }
                         }
                         Ok(EvalResult::PrintValue(expr, val)) => {
                             let range = expr.fc();
                             let input_slice = &line[range.start..range.end];
 
                             let value_part = format!("{} => {}", input_slice, val.kind);
-                            let response = format!("{:<20} [{}]", value_part, val.unit);
+                            let response = format!("{:<12} [{}]", value_part, val.unit);
                             println!("{} {}", "✔".green(), response.bright_black());
                         }
                         Err(err) => {
@@ -125,4 +175,99 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     repl(&mut rt)
+}
+
+type Rating = BigDecimal;
+
+fn closest_match(
+    val_kind: &ValueKind,
+    matches: HashMap<&Name, ValueKind>,
+) -> impl Iterator<Item = (Name, Option<SiPrefix>, ValueKind)> {
+    let prefixes = &[
+        SiPrefix::Femto,
+        SiPrefix::Pico,
+        SiPrefix::Nano,
+        SiPrefix::Micro,
+        SiPrefix::Milli,
+        SiPrefix::Centi,
+        // These three often end up doing weird things
+        // and are not used very often anyway 👀
+        // SiPrefix::Deci,
+        // SiPrefix::Deca,
+        // SiPrefix::Hecto,
+        SiPrefix::Kilo,
+        SiPrefix::Mega,
+        SiPrefix::Giga,
+        SiPrefix::Tera,
+        SiPrefix::Peta,
+    ];
+
+    let mut rating: HashMap<String, (Option<SiPrefix>, ValueKind, Rating)> = Default::default();
+
+    'matches: for (name, val) in matches {
+        let (v, m) = match (val_kind, &val) {
+            (ValueKind::Number(a), ValueKind::Number(b)) => (a, b),
+            _ => continue 'matches,
+        };
+
+        let handicap = if m == &BigDecimal::from(1) {
+            // base-unit
+            0.2
+        } else {
+            // derived unit
+            1.0
+        };
+
+        for prefix in prefixes {
+            let m = m * prefix.value();
+
+            let dist = num_distance(v, &m, handicap);
+
+            rating
+                .entry(name.clone())
+                .and_modify(|(pre, val, rating)| {
+                    if dist < *rating {
+                        *pre = Some(*prefix);
+                        *val = ValueKind::Number(v / m);
+                        *rating = dist.clone();
+                    }
+                })
+                .or_insert_with(|| (Some(*prefix), val.clone(), dist));
+        }
+
+        let dist = num_distance(v, &m, handicap * 0.5);
+
+        rating
+            .entry(name.clone())
+            .and_modify(|(pre, val, rating)| {
+                if dist < *rating {
+                    *pre = None;
+                    *val = ValueKind::Number(v / m);
+                    *rating = dist.clone();
+                }
+            })
+            .or_insert_with(|| (None, val.clone(), dist));
+    }
+
+    let mut ratings = rating.into_iter().collect::<Vec<_>>();
+    ratings.sort_by(|(_, (_, _, a)), (_, (_, _, b))| a.cmp(b));
+    ratings
+        .into_iter()
+        .map(|(name, (prefix, val, _))| (name, prefix, val))
+}
+
+fn num_distance(a: &BigDecimal, b: &BigDecimal, handicap: f64) -> Rating {
+    let div = a / b;
+
+    let divi = if let Some(val) = div.to_i128() {
+        val.abs()
+    } else {
+        return BigDecimal::from(1000 * 1000);
+    };
+
+    if (1..=999).contains(&divi) {
+        ((divi as f64 * 1000.0 * handicap) as i64).into()
+    } else {
+        ((1000.0 * 1000.0 * handicap) as i64).into()
+    }
 }

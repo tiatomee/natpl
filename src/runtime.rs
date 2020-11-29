@@ -11,6 +11,7 @@ use thiserror::Error;
 #[derive(Default)]
 pub struct Runtime {
     units: HashSet<Name>,
+    unit_aliases: HashMap<Name, Value>,
     variables: HashMap<Name, Value>,
     functions: HashMap<Name, (Vec<Name>, Expression)>,
 }
@@ -27,10 +28,28 @@ impl Runtime {
         }
     }
 
+    pub fn find_unit_likes<'a, 'b: 'a>(
+        &'b mut self,
+        unit: &'a Unit,
+    ) -> HashMap<&'a Name, ValueKind> {
+        let mut results = HashMap::new();
+
+        results.extend(self.unit_aliases.iter().filter_map(|(name, val)| {
+            if &val.unit == unit {
+                Some((name, val.kind.clone()))
+            } else {
+                None
+            }
+        }));
+
+        results
+    }
+
     pub fn line_item_to_item(&mut self, item: LineItem) -> Option<Item> {
         let it = match item {
             LineItem::Empty => return None,
             LineItem::UnitDeclaration(fc, name) => Item::UnitDeclaration(fc, name),
+            LineItem::UnitAlias(fc, name, expr) => Item::UnitAlias(fc, name, expr),
             LineItem::MaybeDeclarationOrEqualityExpression(decl) => {
                 let name = decl.declaration_name();
 
@@ -62,6 +81,18 @@ impl Runtime {
                     Err(ItemError::UnitRedeclared(name))
                 } else {
                     Ok(EvalResult::Empty)
+                }
+            }
+            Item::UnitAlias(_, name, expr) => {
+                let value = self.eval_expr(&expr)?;
+
+                let name = name.name();
+                match self.unit_aliases.entry(name.clone()) {
+                    Entry::Occupied(_) => Err(ItemError::UnitRedeclared(name)),
+                    Entry::Vacant(entry) => {
+                        let val = entry.insert(value).clone();
+                        Ok(EvalResult::Value(val))
+                    }
                 }
             }
             Item::VariableDeclaration { fc: _, name, rhs } => {
@@ -171,6 +202,8 @@ impl Runtime {
         }
     }
 
+    // Name might be changed in future
+    #[allow(clippy::ptr_arg)]
     pub fn lookup(&self, name: &Name) -> Option<Value> {
         if let Some(val) = self.variables.get(name) {
             Some(val.clone())
@@ -179,6 +212,8 @@ impl Runtime {
                 kind: ValueKind::Number(BigDecimal::from(1)),
                 unit: Unit::new_named(name.clone()),
             })
+        } else if let Some(val) = self.unit_aliases.get(name) {
+            Some(val.clone())
         } else if self.functions.contains_key(name) {
             Some(Value {
                 kind: ValueKind::FunctionRef(name.clone()),
@@ -189,7 +224,7 @@ impl Runtime {
         }
     }
 
-    fn eval_infix_op(
+    pub fn eval_infix_op(
         &self,
         fc: FC,
         op: InfixOp,
@@ -232,7 +267,7 @@ impl Runtime {
                 let mut res = BigDecimal::from(1);
 
                 for _ in 0..pow.abs() {
-                    res = res * a;
+                    res *= a;
                 }
 
                 if pow.is_negative() {
@@ -259,30 +294,9 @@ impl Runtime {
 }
 
 fn apply_prefix(fc: FC, prefix: SiPrefix, mut val: Value) -> Result<Value, EvalError> {
-    let kind = match (prefix, &val.kind) {
-        (SiPrefix::Femto, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000_000_000_000u64),
-        (SiPrefix::Pico, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000_000_000u64),
-        (SiPrefix::Nano, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000_000u64),
-        (SiPrefix::Micro, ValueKind::Number(x)) => ValueKind::Number(x / 1_000_000u64),
-        (SiPrefix::Milli, ValueKind::Number(x)) => ValueKind::Number(x / 1_000u64),
-        (SiPrefix::Centi, ValueKind::Number(x)) => ValueKind::Number(x / 100u64),
-        (SiPrefix::Deci, ValueKind::Number(x)) => ValueKind::Number(x / 10u64),
-        (SiPrefix::Deca, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(10u64)),
-        (SiPrefix::Hecto, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(100u64)),
-        (SiPrefix::Kilo, ValueKind::Number(x)) => ValueKind::Number(x * BigDecimal::from(1_000u64)),
-        (SiPrefix::Mega, ValueKind::Number(x)) => {
-            ValueKind::Number(x * BigDecimal::from(1_000_000u64))
-        }
-        (SiPrefix::Giga, ValueKind::Number(x)) => {
-            ValueKind::Number(x * BigDecimal::from(1_000_000_000u64))
-        }
-        (SiPrefix::Tera, ValueKind::Number(x)) => {
-            ValueKind::Number(x * BigDecimal::from(1_000_000_000_000u64))
-        }
-        (SiPrefix::Peta, ValueKind::Number(x)) => {
-            ValueKind::Number(x * BigDecimal::from(1_000_000_000_000_000u64))
-        }
-        (_, ValueKind::FunctionRef(_)) => return Err(EvalError::InvalidSiPrefix(fc, prefix, val)),
+    let kind = match &val.kind {
+        ValueKind::Number(n) => ValueKind::Number(prefix.value() * n),
+        ValueKind::FunctionRef(_) => return Err(EvalError::InvalidSiPrefix(fc, prefix, val)),
     };
     val.kind = kind;
     Ok(val)

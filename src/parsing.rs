@@ -32,10 +32,12 @@ impl<'toks, 'src> Parser<'toks, 'src> {
             return Ok(LineItem::Empty);
         }
 
-        if let Ok((fc, name)) = this.parse_unit_declaration() {
-            return Ok(LineItem::UnitDeclaration(fc, name));
-        } else {
-            this.toks = line_toks;
+        match this.parse_unit_declaration() {
+            Ok((fc, name, None)) => return Ok(LineItem::UnitDeclaration(fc, name)),
+            Ok((fc, name, Some(expr))) => return Ok(LineItem::UnitAlias(fc, name, expr)),
+            Err(_) => {
+                this.toks = line_toks;
+            }
         }
 
         if let Ok((fc, expr)) = this.parse_printed_expr() {
@@ -59,7 +61,7 @@ impl<'toks, 'src> Parser<'toks, 'src> {
         }
     }
 
-    fn parse_unit_declaration(&mut self) -> Result<'src, (FC, Identifier)> {
+    fn parse_unit_declaration(&mut self) -> Result<'src, (FC, Identifier, Option<Expression>)> {
         let fc = self.expect(|fc, t| {
             if matches!(t, Token::Unit) {
                 Some(fc)
@@ -69,10 +71,17 @@ impl<'toks, 'src> Parser<'toks, 'src> {
         })?;
         let name = self.expect_identifier()?;
 
+        let expr = if matches!(self.peek(), Some(Token::OpEq)) {
+            self.next()?;
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
         if let Some((t, span)) = self.toks.first() {
             Err(ParseError::UnexpectedToken(*t, span.into()))
         } else {
-            Ok((fc.merge(name.fc()), name))
+            Ok((fc.merge(name.fc()), name, expr))
         }
     }
 
@@ -364,6 +373,8 @@ fn infix_binding_power(t: Token<'_>) -> Option<(u8, u8, InfixOp)> {
         Token::OpMod => Some((80, 81, InfixOp::Mod)),
         Token::OpAdd => Some((70, 71, InfixOp::Add)),
         Token::OpSub => Some((70, 71, InfixOp::Sub)),
+
+        Token::OpIn => Some((50, 51, InfixOp::Div)),
 
         Token::OpEq => Some((20, 21, InfixOp::Eq)),
         Token::OpNeq => Some((20, 21, InfixOp::Neq)),

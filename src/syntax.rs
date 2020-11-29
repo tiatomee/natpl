@@ -44,6 +44,7 @@ impl FC {
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Item {
     UnitDeclaration(FC, Identifier),
+    UnitAlias(FC, Identifier, Expression),
     VariableDeclaration {
         fc: FC,
         name: Identifier,
@@ -63,6 +64,7 @@ pub enum Item {
 pub enum LineItem {
     Empty,
     UnitDeclaration(FC, Identifier),
+    UnitAlias(FC, Identifier, Expression),
     MaybeDeclarationOrEqualityExpression(DeclarationOrEquality),
     PrintedExpression(FC, Expression),
     SilentExpression(Expression),
@@ -170,6 +172,7 @@ pub enum Expression {
     Parenthesised(FC, Box<Expression>),
 }
 
+#[repr(u8)]
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum SiPrefix {
     Femto,
@@ -186,6 +189,65 @@ pub enum SiPrefix {
     Giga,
     Tera,
     Peta,
+}
+
+impl SiPrefix {
+    pub fn value(&self) -> BigDecimal {
+        match self {
+            SiPrefix::Femto => BigDecimal::from(1_000_000_000_000_000u64).inverse(),
+            SiPrefix::Pico => BigDecimal::from(1_000_000_000_000u64).inverse(),
+            SiPrefix::Nano => BigDecimal::from(1_000_000_000u64).inverse(),
+            SiPrefix::Micro => BigDecimal::from(1_000_000u64).inverse(),
+            SiPrefix::Milli => BigDecimal::from(1_000u64).inverse(),
+            SiPrefix::Centi => BigDecimal::from(100u64).inverse(),
+            SiPrefix::Deci => BigDecimal::from(10u64).inverse(),
+            SiPrefix::Deca => BigDecimal::from(10u64),
+            SiPrefix::Hecto => BigDecimal::from(100u64),
+            SiPrefix::Kilo => BigDecimal::from(1_000u64),
+            SiPrefix::Mega => BigDecimal::from(1_000_000u64),
+            SiPrefix::Giga => BigDecimal::from(1_000_000_000u64),
+            SiPrefix::Tera => BigDecimal::from(1_000_000_000_000u64),
+            SiPrefix::Peta => BigDecimal::from(1_000_000_000_000_000u64),
+        }
+    }
+
+    pub fn short_prefix(&self) -> &'static str {
+        match self {
+            SiPrefix::Femto => "f",
+            SiPrefix::Pico => "p",
+            SiPrefix::Nano => "n",
+            SiPrefix::Micro => "μ",
+            SiPrefix::Milli => "m",
+            SiPrefix::Centi => "c",
+            SiPrefix::Deci => "d",
+            SiPrefix::Deca => "da",
+            SiPrefix::Hecto => "H",
+            SiPrefix::Kilo => "K",
+            SiPrefix::Mega => "M",
+            SiPrefix::Giga => "G",
+            SiPrefix::Tera => "T",
+            SiPrefix::Peta => "P",
+        }
+    }
+
+    pub fn full_prefix(&self) -> &'static str {
+        match self {
+            SiPrefix::Femto => "femto",
+            SiPrefix::Pico => "pico",
+            SiPrefix::Nano => "nano",
+            SiPrefix::Micro => "micro",
+            SiPrefix::Milli => "milli",
+            SiPrefix::Centi => "centi",
+            SiPrefix::Deci => "deci",
+            SiPrefix::Deca => "deca",
+            SiPrefix::Hecto => "hecto",
+            SiPrefix::Kilo => "kilo",
+            SiPrefix::Mega => "mega",
+            SiPrefix::Giga => "giga",
+            SiPrefix::Tera => "tera",
+            SiPrefix::Peta => "peta",
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -240,6 +302,7 @@ impl HasFC for Item {
     fn fc(&self) -> FC {
         match self {
             Item::UnitDeclaration(fc, _) => *fc,
+            Item::UnitAlias(fc, _, _) => *fc,
             Item::VariableDeclaration { fc, .. } => *fc,
             Item::FunctionDeclaration { fc, .. } => *fc,
             Item::PrintedExpression(fc, _) => *fc,
@@ -253,6 +316,7 @@ impl HasFC for LineItem {
         match self {
             LineItem::Empty => FC { start: 0, end: 0 },
             LineItem::UnitDeclaration(fc, _) => *fc,
+            LineItem::UnitAlias(fc, _, _) => *fc,
             LineItem::MaybeDeclarationOrEqualityExpression(decl) => decl.fc(),
             LineItem::PrintedExpression(fc, _) => *fc,
             LineItem::SilentExpression(expr) => expr.fc(),

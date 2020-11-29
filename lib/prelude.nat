@@ -2,13 +2,18 @@ unit meter
 unit second
 unit kilogram
 
-m = meter
-L = (0.1 m)^3
+unit m = meter
+unit L = (0.1 m)^3
 
-s = second
-min = 60 s
+unit s = second
+unit min = 60 s
+unit hour = 60 min
+unit day = 24 hour
+unit week = 7 day
+unit month = 4 week
+unit year = 12 month
 
-kg = kilogram
-g = kg / 1000
+unit kg = kilogram
+unit g = kg / 1000
 
 unit mol
