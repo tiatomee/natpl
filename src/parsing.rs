@@ -46,6 +46,14 @@ impl<'toks, 'src> Parser<'toks, 'src> {
             this.toks = line_toks;
         };
 
+        match this.parse_search() {
+            Ok((fc, None)) => return Ok(LineItem::VarSearch(fc)),
+            Ok((_, Some(expr))) => return Ok(LineItem::UnitSearch(expr)),
+            Err(_) => {
+                this.toks = line_toks;
+            }
+        }
+
         if let Ok(decl_or_eq) = this.parse_declaration_or_equality() {
             return Ok(LineItem::MaybeDeclarationOrEqualityExpression(decl_or_eq));
         } else {
@@ -82,6 +90,17 @@ impl<'toks, 'src> Parser<'toks, 'src> {
             Err(ParseError::UnexpectedToken(*t, span.into()))
         } else {
             Ok((fc.merge(name.fc()), name, expr))
+        }
+    }
+
+    fn parse_search(&mut self) -> Result<'src, (FC, Option<Expression>)> {
+        let (fc, ()) = self.expect_and_fc(|t| matches!(t, Token::QuestionMark))?;
+
+        if self.peek().is_some() {
+            let rhs = self.parse_expr()?;
+            Ok((fc, Some(rhs)))
+        } else {
+            Ok((fc, None))
         }
     }
 

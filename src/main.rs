@@ -5,7 +5,7 @@ use runtime::{EvalResult, Runtime};
 use rustyline::error::ReadlineError;
 
 use owo_colors::OwoColorize;
-use term::ValueKind;
+use term::{Value, ValueKind};
 use thiserror::Error;
 
 use syntax::{HasFC, Name, SiPrefix};
@@ -57,10 +57,14 @@ fn load_file(rt: &mut Runtime, content: &str) -> Result<(), LoadFileError> {
                     val.unit
                 );
             }
+            EvalResult::VariableSearchResult { .. } => todo!(),
+            EvalResult::UnitSearchResult { .. } => todo!(),
         }
     }
     Ok(())
 }
+
+const EXPR_PAD: usize = 12;
 
 fn repl(rt: &mut runtime::Runtime) -> Result<(), Box<dyn std::error::Error>> {
     let mut rl = rustyline::Editor::<()>::new();
@@ -83,53 +87,82 @@ fn repl(rt: &mut runtime::Runtime) -> Result<(), Box<dyn std::error::Error>> {
                 match line_item {
                     Ok(item) => match rt.eval_line_item(item) {
                         Ok(EvalResult::Empty) => {}
-                        Ok(EvalResult::Value(val)) => {
-                            fn name_with_prefix(name: &str, prefix: Option<SiPrefix>) -> String {
-                                if let Some(pre) = prefix {
-                                    if name.len() <= 2 {
-                                        format!("{}{}", pre.short_prefix(), name)
-                                    } else {
-                                        format!("{}{}", pre.full_prefix(), name)
-                                    }
-                                } else {
-                                    name.to_string()
-                                }
-                            }
+                        Ok(EvalResult::VariableSearchResult {
+                            unit_aliases: _,
+                            variables,
+                            functions: _,
+                        }) => {
+                            let longest_name =
+                                variables.keys().max_by(|a, b| a.len().cmp(&b.len()));
+                            let name_length = longest_name.map(|s| s.len()).unwrap_or(0);
 
-                            let units = rt.find_unit_likes(&val.unit);
-                            let mut matches = closest_match(&val.kind, units);
-
-                            // Iterator speghetti!!
-                            // Try to take the best candidate, if it's actually anything
-                            // unique (not `s` vs second)
-                            let candidates = matches
-                                .next()
-                                .into_iter()
-                                .filter(|(_, _, val_kind)| val_kind != &val.kind)
-                                .map(|(name, pre, val_kind)| {
-                                    (val_kind, name_with_prefix(&name, pre))
-                                })
-                                // Then take the "raw" unit, this one is always printed
-                                // as a kind of fallback in case the suggestion is not good.
-                                .chain(Some((val.kind.clone(), val.unit.to_string())).into_iter())
-                                // Then the rest of the candidates (that are unique)
-                                .chain(
-                                    matches
-                                        .filter(|(_, _, val_kind)| val_kind != &val.kind)
-                                        .map(|(name, pre, val_kind)| {
-                                            (val_kind, name_with_prefix(&name, pre))
-                                        }),
-                                )
-                                .take(3);
-
-                            for (i, (val, unit)) in candidates.enumerate() {
+                            for (i, (name, val)) in variables.into_iter().enumerate() {
                                 let marker = if i == 0 {
                                     format!("{}", "✔".green())
                                 } else {
                                     format!("{}", "⇒".bright_black())
                                 };
 
-                                let response = format!("{:<12} [{}]", val.to_string(), unit);
+                                let (unit_name, val_kind) = unit_matches(rt, &val).next().unwrap();
+                                let line = format!(
+                                    "{:width$} = {:expr_pad$} [{}]",
+                                    name,
+                                    val_kind.to_string(),
+                                    unit_name,
+                                    width = name_length,
+                                    expr_pad = EXPR_PAD
+                                );
+                                println!("{} {}", marker, line.bright_black());
+                            }
+                        }
+                        Ok(EvalResult::UnitSearchResult {
+                            unit,
+                            unit_aliases: _,
+                            variables,
+                        }) => {
+                            let longest_name =
+                                variables.keys().max_by(|a, b| a.len().cmp(&b.len()));
+                            let name_length = longest_name.map(|s| s.len()).unwrap_or(0);
+
+                            for (i, (name, kind)) in variables.into_iter().enumerate() {
+                                let marker = if i == 0 {
+                                    format!("{}", "✔".green())
+                                } else {
+                                    format!("{}", "⇒".bright_black())
+                                };
+
+                                let val = Value {
+                                    kind,
+                                    unit: unit.clone(),
+                                };
+                                let (unit_name, val_kind) = unit_matches(rt, &val).next().unwrap();
+                                let line = format!(
+                                    "{:width$} = {:expr_pad$} [{}]",
+                                    name,
+                                    val_kind.to_string(),
+                                    unit_name,
+                                    width = name_length,
+                                    expr_pad = EXPR_PAD
+                                );
+                                println!("{} {}", marker, line.bright_black());
+                            }
+                        }
+                        Ok(EvalResult::Value(val)) => {
+                            let candidates = unit_matches(rt, &val);
+
+                            for (i, (unit, val)) in candidates.take(3).enumerate() {
+                                let marker = if i == 0 {
+                                    format!("{}", "✔".green())
+                                } else {
+                                    format!("{}", "⇒".bright_black())
+                                };
+
+                                let response = format!(
+                                    "{:expr_pad$} [{}]",
+                                    val.to_string(),
+                                    unit,
+                                    expr_pad = 12
+                                );
                                 println!("{} {}", marker, response.bright_black());
                             }
                         }
@@ -138,7 +171,12 @@ fn repl(rt: &mut runtime::Runtime) -> Result<(), Box<dyn std::error::Error>> {
                             let input_slice = &line[range.start..range.end];
 
                             let value_part = format!("{} => {}", input_slice, val.kind);
-                            let response = format!("{:<12} [{}]", value_part, val.unit);
+                            let response = format!(
+                                "{:expr_pad$} [{}]",
+                                value_part,
+                                val.unit,
+                                expr_pad = EXPR_PAD
+                            );
                             println!("{} {}", "✔".green(), response.bright_black());
                         }
                         Err(err) => {
@@ -178,6 +216,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 type Rating = u64;
+
+fn unit_matches(rt: &Runtime, val: &Value) -> impl Iterator<Item = (Name, ValueKind)> {
+    fn name_with_prefix(name: &str, prefix: Option<SiPrefix>) -> String {
+        if let Some(pre) = prefix {
+            if name.len() <= 2 {
+                format!("{}{}", pre.short_prefix(), name)
+            } else {
+                format!("{}{}", pre.full_prefix(), name)
+            }
+        } else {
+            name.to_string()
+        }
+    }
+
+    let val = val.clone();
+
+    let units = rt.find_units(&val.unit);
+
+    let mut matches = closest_match(&val.kind, units);
+
+    // Iterator speghetti!!
+    // Try to take the best candidate, if it's actually anything
+    // unique (not `s` vs second)
+    matches
+        .next()
+        .into_iter()
+        .filter({
+            let val = val.clone();
+            move |(_, _, val_kind)| val_kind != &val.kind
+        })
+        .map(|(name, pre, val_kind)| (name_with_prefix(&name, pre), val_kind))
+        // Then take the "raw" unit, this one is always printed
+        // as a kind of fallback in case the suggestion is not good.
+        .chain(Some((val.unit.to_string(), val.kind.clone())).into_iter())
+        // Then the rest of the candidates (that are unique)
+        .chain(
+            matches
+                .filter({
+                    let val = val.clone();
+                    move |(_, _, val_kind)| val_kind != &val.kind
+                })
+                .map(|(name, pre, val_kind)| (name_with_prefix(&name, pre), val_kind)),
+        )
+}
 
 fn closest_match(
     val_kind: &ValueKind,

@@ -28,18 +28,6 @@ impl Display for ValueKind {
                     format!("x10^{}", exp)
                 };
 
-                /*
-                if dec.len() <= 3 && (0..4).contains(&exp) {
-                    if dec.len() < exp as _ {
-                        f.write_fmt(format_args!("{:.prec$}", num, prec = 0))
-                    } else {
-                        f.write_fmt(format_args!(
-                            "{:.prec$}",
-                            num,
-                            prec = dec.len() - exp as usize
-                        ))
-                    }
-                */
                 if (0..4).contains(&exp) {
                     if dec.len() < exp as _ {
                         f.write_fmt(format_args!("{:.prec$}", num, prec = 0))
@@ -50,11 +38,11 @@ impl Display for ValueKind {
                             prec = dec.len().min(4) - exp as usize
                         ))
                     }
-                } else if (-3..0).contains(&exp) && (-exp) as usize + dec.len() < 4 {
+                } else if (-3..0).contains(&exp) {
                     f.write_fmt(format_args!(
                         "{:.prec$}",
                         num,
-                        prec = (dec.len() + (-exp as usize))
+                        prec = (dec.len() + (-exp) as usize).min(4)
                     ))
                 } else if dec.is_empty() {
                     f.write_fmt(format_args!("{}{}", int, exp_str))

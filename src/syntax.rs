@@ -43,6 +43,8 @@ impl FC {
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Item {
+    VarSearch(FC),
+    UnitSearch(Expression),
     UnitDeclaration(FC, Identifier),
     UnitAlias(FC, Identifier, Expression),
     VariableDeclaration {
@@ -63,6 +65,8 @@ pub enum Item {
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum LineItem {
     Empty,
+    VarSearch(FC),
+    UnitSearch(Expression),
     UnitDeclaration(FC, Identifier),
     UnitAlias(FC, Identifier, Expression),
     MaybeDeclarationOrEqualityExpression(DeclarationOrEquality),
@@ -313,6 +317,8 @@ impl HasFC for Identifier {
 impl HasFC for Item {
     fn fc(&self) -> FC {
         match self {
+            Item::VarSearch(fc) => *fc,
+            Item::UnitSearch(expr) => expr.fc(),
             Item::UnitDeclaration(fc, _) => *fc,
             Item::UnitAlias(fc, _, _) => *fc,
             Item::VariableDeclaration { fc, .. } => *fc,
@@ -327,6 +333,8 @@ impl HasFC for LineItem {
     fn fc(&self) -> FC {
         match self {
             LineItem::Empty => FC { start: 0, end: 0 },
+            LineItem::VarSearch(fc) => *fc,
+            LineItem::UnitSearch(expr) => expr.fc(),
             LineItem::UnitDeclaration(fc, _) => *fc,
             LineItem::UnitAlias(fc, _, _) => *fc,
             LineItem::MaybeDeclarationOrEqualityExpression(decl) => decl.fc(),

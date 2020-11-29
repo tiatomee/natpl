@@ -7,6 +7,9 @@ pub enum Token<'input> {
     #[token("unit")]
     Unit,
 
+    #[token("?")]
+    QuestionMark,
+
     #[token("=")]
     OpEq,
 

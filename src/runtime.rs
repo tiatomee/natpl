@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::{
     syntax::{Expression, HasFC, InfixOp, Item, LineItem, Name, PrefixOp, SiPrefix, FC},
@@ -28,26 +28,40 @@ impl Runtime {
         }
     }
 
-    pub fn find_unit_likes<'a, 'b: 'a>(
-        &'b mut self,
+    pub fn find_units<'a, 'b: 'a>(&'b self, unit: &'a Unit) -> HashMap<&'a Name, ValueKind> {
+        self.unit_aliases
+            .iter()
+            .filter_map(|(name, val)| {
+                if &val.unit == unit {
+                    Some((name, val.kind.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn find_variables_with_unit<'a, 'b: 'a>(
+        &'b self,
         unit: &'a Unit,
     ) -> HashMap<&'a Name, ValueKind> {
-        let mut results = HashMap::new();
-
-        results.extend(self.unit_aliases.iter().filter_map(|(name, val)| {
-            if &val.unit == unit {
-                Some((name, val.kind.clone()))
-            } else {
-                None
-            }
-        }));
-
-        results
+        self.variables
+            .iter()
+            .filter_map(|(name, val)| {
+                if &val.unit == unit {
+                    Some((name, val.kind.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
     pub fn line_item_to_item(&mut self, item: LineItem) -> Option<Item> {
         let it = match item {
             LineItem::Empty => return None,
+            LineItem::VarSearch(fc) => Item::VarSearch(fc),
+            LineItem::UnitSearch(expr) => Item::UnitSearch(expr),
             LineItem::UnitDeclaration(fc, name) => Item::UnitDeclaration(fc, name),
             LineItem::UnitAlias(fc, name, expr) => Item::UnitAlias(fc, name, expr),
             LineItem::MaybeDeclarationOrEqualityExpression(decl) => {
@@ -73,6 +87,35 @@ impl Runtime {
         use std::collections::hash_map::Entry;
 
         match item {
+            Item::VarSearch(_) => Ok(EvalResult::VariableSearchResult {
+                unit_aliases: self
+                    .unit_aliases
+                    .iter()
+                    .map(|(n, v)| (n.clone(), v.clone()))
+                    .collect(),
+                variables: self
+                    .variables
+                    .iter()
+                    .map(|(n, v)| (n.clone(), v.clone()))
+                    .collect(),
+                functions: Default::default(), // TODO
+            }),
+            Item::UnitSearch(expr) => {
+                let val = self.eval_expr(&expr)?;
+                Ok(EvalResult::UnitSearchResult {
+                    unit_aliases: self
+                        .find_units(&val.unit)
+                        .into_iter()
+                        .map(|(n, v)| (n.clone(), v))
+                        .collect(),
+                    variables: self
+                        .find_variables_with_unit(&val.unit)
+                        .into_iter()
+                        .map(|(n, v)| (n.clone(), v))
+                        .collect(),
+                    unit: val.unit,
+                })
+            }
             Item::UnitDeclaration(_, name) => {
                 let name = name.name();
 
@@ -350,6 +393,16 @@ pub enum EvalResult {
     Empty,
     Value(Value),
     PrintValue(Expression, Value),
+    VariableSearchResult {
+        unit_aliases: BTreeMap<Name, Value>,
+        variables: BTreeMap<Name, Value>,
+        functions: BTreeMap<Name, Vec<Name>>,
+    },
+    UnitSearchResult {
+        unit: Unit,
+        unit_aliases: BTreeMap<Name, ValueKind>,
+        variables: BTreeMap<Name, ValueKind>,
+    },
 }
 
 #[derive(Debug, Error)]
