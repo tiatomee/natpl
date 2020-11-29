@@ -234,7 +234,7 @@ impl SiPrefix {
             SiPrefix::Deci => "d",
             SiPrefix::Deca => "da",
             SiPrefix::Hecto => "H",
-            SiPrefix::Kilo => "K",
+            SiPrefix::Kilo => "k",
             SiPrefix::Mega => "M",
             SiPrefix::Giga => "G",
             SiPrefix::Tera => "T",

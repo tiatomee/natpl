@@ -1,10 +1,6 @@
-# Create a solution for ligation of an insert and
-# a vector. 25ng of the vector should be used.
-#
-# The solution should have a 1:3 molar ratio of
-# vector:insert
+# We want a 1:3 molar solution insert:vector
 
-# Size of the molecules
+# Size of the molecules (i = insert, v = vector)
 is = 1.7 kbp
 vs = 3.0 kbp
 
