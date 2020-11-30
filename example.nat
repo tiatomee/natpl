@@ -3,9 +3,9 @@ distance = 12 meter
 time = 5 second
 
 > distance
-> second
+> time
 
-speed = distance / second
+speed = distance / time
 
 # check the unit
 [speed] = meter/second
