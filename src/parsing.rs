@@ -378,8 +378,8 @@ impl<'toks, 'src> Parser<'toks, 'src> {
 
 fn prefix_binding_power(t: Token<'_>) -> Option<((), u8, PrefixOp)> {
     match t {
-        Token::OpAdd => Some(((), 5, PrefixOp::Pos)),
-        Token::OpSub => Some(((), 5, PrefixOp::Neg)),
+        Token::OpAdd => Some(((), 100, PrefixOp::Pos)),
+        Token::OpSub => Some(((), 100, PrefixOp::Neg)),
         _ => None,
     }
 }

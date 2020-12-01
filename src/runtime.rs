@@ -218,7 +218,7 @@ impl Runtime {
                 match op {
                     crate::syntax::PrefixOp::Pos => match &mut val.kind {
                         ValueKind::Number(_) => Ok(val),
-                        ValueKind::Bool(_) | ValueKind::FunctionRef(_) => {
+                        ValueKind::FunctionRef(_) => {
                             Err(EvalError::InvalidPrefixOperator(*fc, *op, val))
                         }
                     },
@@ -227,7 +227,7 @@ impl Runtime {
                             *num = -&*num;
                             Ok(val)
                         }
-                        ValueKind::Bool(_) | ValueKind::FunctionRef(_) => {
+                        ValueKind::FunctionRef(_) => {
                             Err(EvalError::InvalidPrefixOperator(*fc, *op, val))
                         }
                     },
@@ -322,26 +322,33 @@ impl Runtime {
                     unit,
                 })
             }
-            (InfixOp::Eq, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
-                kind: ValueKind::Bool(a == b),
-                unit,
-            }),
-            (InfixOp::Eq, ValueKind::Bool(a), ValueKind::Bool(b)) => Ok(Value {
-                kind: ValueKind::Bool(a == b),
-                unit,
-            }),
-            (InfixOp::Neq, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
-                kind: ValueKind::Bool(a != b),
-                unit,
-            }),
-            (InfixOp::Neq, ValueKind::Bool(a), ValueKind::Bool(b)) => Ok(Value {
-                kind: ValueKind::Bool(a != b),
-                unit,
-            }),
-            (InfixOp::Gt, ValueKind::Number(a), ValueKind::Number(b)) => Ok(Value {
-                kind: ValueKind::Bool(a > b),
-                unit,
-            }),
+            (InfixOp::Eq, ValueKind::Number(a), ValueKind::Number(b)) => {
+                if a == b {
+                    Ok(lhs.clone())
+                } else {
+                    Err(EvalError::EqualtyError(fc, op, lhs.clone(), rhs.clone()))
+                }
+            }
+            (InfixOp::Neq, ValueKind::Number(a), ValueKind::Number(b)) => {
+                if a != b {
+                    Ok(Value {
+                        kind: ValueKind::Number(1.into()),
+                        unit,
+                    })
+                } else {
+                    Err(EvalError::EqualtyError(fc, op, lhs.clone(), rhs.clone()))
+                }
+            }
+            (InfixOp::Gt, ValueKind::Number(a), ValueKind::Number(b)) => {
+                if a > b {
+                    Ok(Value {
+                        kind: ValueKind::Number(1.into()),
+                        unit,
+                    })
+                } else {
+                    Err(EvalError::EqualtyError(fc, op, lhs.clone(), rhs.clone()))
+                }
+            }
             (op, _, _) => Err(EvalError::InvalidInfixOperator(fc, op, lhs, rhs)),
         }
     }
@@ -350,9 +357,7 @@ impl Runtime {
 fn apply_prefix(fc: FC, prefix: SiPrefix, mut val: Value) -> Result<Value, EvalError> {
     let kind = match &val.kind {
         ValueKind::Number(n) => ValueKind::Number(prefix.value() * n),
-        ValueKind::Bool(_) | ValueKind::FunctionRef(_) => {
-            return Err(EvalError::InvalidSiPrefix(fc, prefix, val))
-        }
+        ValueKind::FunctionRef(_) => return Err(EvalError::InvalidSiPrefix(fc, prefix, val)),
     };
     val.kind = kind;
     Ok(val)
@@ -396,7 +401,19 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
                 )),
             }
         }
-        InfixOp::Eq | InfixOp::Neq => {
+        InfixOp::Eq => {
+            if lhs.unit == rhs.unit {
+                Ok(lhs.unit.clone())
+            } else {
+                Err(UnitError::IncompatibleUnits(
+                    fc,
+                    op,
+                    lhs.unit.clone(),
+                    rhs.unit.clone(),
+                ))
+            }
+        }
+        InfixOp::Neq => {
             if lhs.unit == rhs.unit {
                 Ok(Unit::new())
             } else {
@@ -465,6 +482,9 @@ pub enum EvalError {
 
     #[error("Invalid SI-prefix {:?} on value {} [{}]", .1, .2.kind, .2.unit)]
     InvalidSiPrefix(FC, SiPrefix, Value),
+
+    #[error("Equality assertion error {:?} on values {} [{}] and {} [{}]", .1, .2.kind, .2.unit, .3.kind, .3.unit)]
+    EqualtyError(FC, InfixOp, Value, Value),
 
     #[error("Unit error: {}", .0)]
     UnitError(#[from] UnitError),

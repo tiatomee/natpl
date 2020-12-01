@@ -15,7 +15,6 @@ pub struct Value {
 pub enum ValueKind {
     FunctionRef(Name),
     Number(BigDecimal),
-    Bool(bool),
 }
 
 impl Display for ValueKind {
@@ -54,7 +53,6 @@ impl Display for ValueKind {
                     f.write_fmt(format_args!("{}.{}{}", int, dec, exp_str))
                 }
             }
-            ValueKind::Bool(b) => b.fmt(f),
         }
     }
 }
