@@ -5,7 +5,7 @@ use crate::{
     syntax::{HasFC, Name, SiPrefix},
     value_unit::{Value, ValueKind},
 };
-use bigdecimal::{BigDecimal, ToPrimitive};
+use fraction::{BigDecimal, ToPrimitive};
 use owo_colors::OwoColorize;
 use rustyline::error::ReadlineError;
 
@@ -229,7 +229,7 @@ fn closest_match(
         };
 
         for prefix in prefixes {
-            let m = m * prefix.value();
+            let m = m * &prefix.value();
 
             let dist = num_distance(v, &m, 1.0);
 
@@ -238,7 +238,7 @@ fn closest_match(
                 .and_modify(|(pre, val, rating)| {
                     if dist < *rating {
                         *pre = Some(*prefix);
-                        *val = ValueKind::Number(v / m);
+                        *val = ValueKind::Number(v / &m);
                         *rating = dist;
                     }
                 })

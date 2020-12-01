@@ -1,9 +1,7 @@
-use bigdecimal::BigDecimal;
+use fraction::*;
 use std::{collections::BTreeMap, fmt::Display};
 
-use crate::{
-    scinot_parsing::dec_in_scientific_notation, scinot_parsing::max_precision, syntax::Name,
-};
+use crate::{scinot_parsing::dec_in_scientific_notation, syntax::Name, scinot_parsing::max_precision};
 
 #[derive(Debug, Clone)]
 pub struct Value {
@@ -22,7 +20,7 @@ impl Display for ValueKind {
         match self {
             ValueKind::FunctionRef(name) => f.write_fmt(format_args!("<function {}>", name)),
             ValueKind::Number(num) => {
-                let (int, dec, exp) = dec_in_scientific_notation(&num.normalized());
+                let (int, dec, exp, sign) = dec_in_scientific_notation(&num);
 
                 let exp_str = if exp == 0 {
                     "".to_string()
@@ -47,10 +45,10 @@ impl Display for ValueKind {
                         prec = (dec.len() + (-exp) as usize).min(4)
                     ))
                 } else if dec.is_empty() {
-                    f.write_fmt(format_args!("{}{}", int, exp_str))
+                    f.write_fmt(format_args!("{}{}{}", sign, int, exp_str))
                 } else {
                     let dec = max_precision(&dec, 3);
-                    f.write_fmt(format_args!("{}.{}{}", int, dec, exp_str))
+                    f.write_fmt(format_args!("{}{}.{}{}", sign, int, dec, exp_str))
                 }
             }
         }
@@ -59,7 +57,7 @@ impl Display for ValueKind {
 
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
 pub struct Unit {
-    parts: BTreeMap<Name, isize>,
+    parts: BTreeMap<Name, BigDecimal>,
 }
 
 impl Unit {
@@ -69,7 +67,7 @@ impl Unit {
 
     pub fn new_named(name: Name) -> Self {
         let mut this = Self::new();
-        this.parts.insert(name, 1);
+        this.parts.insert(name, 1.into());
         this
     }
 
@@ -78,7 +76,7 @@ impl Unit {
             None
         } else {
             let (name, p) = self.parts.iter().next()?;
-            if *p != 1 {
+            if *p != 1.into() {
                 None
             } else {
                 Some(name)
@@ -90,12 +88,13 @@ impl Unit {
         let mut parts = self.parts.clone();
 
         for (name, val) in &other.parts {
-            let total = *parts
+            let total = parts
                 .entry(name.clone())
-                .and_modify(|e| *e += *val)
-                .or_insert(*val);
+                .and_modify(|e| *e += val)
+                .or_insert_with(|| val.clone())
+                .clone();
 
-            if total == 0 {
+            if total == 0.into() {
                 parts.remove(name);
             }
         }
@@ -107,12 +106,13 @@ impl Unit {
         let mut parts = self.parts.clone();
 
         for (name, val) in &other.parts {
-            let total = *parts
-                .entry(name.clone())
-                .and_modify(|e| *e -= *val)
-                .or_insert(-*val);
+            let total = parts
+            .entry(name.clone())
+            .and_modify(|e| *e -= val)
+            .or_insert_with(|| -val.clone())
+            .clone();
 
-            if total == 0 {
+            if total == 0.into() {
                 parts.remove(name);
             }
         }
@@ -120,18 +120,18 @@ impl Unit {
         Unit { parts }
     }
 
-    pub fn pow(&self, n: isize) -> Unit {
-        let is_neg = n.is_negative();
+    pub fn pow(&self, n: &BigDecimal) -> Unit {
+        let sign = n.sign();
         let n_add = n.abs();
 
         let parts = self
             .parts
             .iter()
             .filter_map(|(k, v)| {
-                let v = *v * n_add;
-                if v == 0 {
+                let v = v * &n_add;
+                if v == 0.into() {
                     None
-                } else if is_neg {
+                } else if sign == Some(Sign::Minus) {
                     Some((k.clone(), -v))
                 } else {
                     Some((k.clone(), v))
@@ -152,7 +152,7 @@ impl Display for Unit {
 
             f.write_str(name)?;
 
-            if *pow != 1 {
+            if *pow != 1.into() {
                 f.write_fmt(format_args!("^{}", *pow))?;
             }
         }

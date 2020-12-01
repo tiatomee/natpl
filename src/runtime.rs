@@ -5,7 +5,7 @@ use crate::{
     value_unit::{Unit, Value, ValueKind},
 };
 
-use bigdecimal::{BigDecimal, ToPrimitive};
+use fraction::{BigDecimal, ToPrimitive};
 use thiserror::Error;
 
 #[derive(Default)]
@@ -208,10 +208,29 @@ impl Runtime {
                 .ok_or_else(|| EvalError::UndefinedName(id.fc(), id.name_ref().clone())),
             Expression::Call {
                 fc: _,
-                base: _,
-                args: _,
+                base,
+                args,
             } => {
-                todo!()
+                match &**base {
+                    Expression::Variable(s) if s.name_ref() == "sqrt" => {
+                        assert_eq!(args.len(), 1);
+                        let arg = &args[0];
+                        let val = self.eval_expr(arg)?;
+
+                        let kind = match &val.kind {
+                            ValueKind::Number(n) => ValueKind::Number(n.to_f64().unwrap().sqrt().into()),
+                            _ => todo!(),
+                        };
+
+                        let unit = val.unit.pow(&(BigDecimal::from(1) / BigDecimal::from(2)));
+
+                        Ok(Value {
+                            kind,
+                            unit,
+                        })
+                    }
+                    _ => todo!()
+                }
             }
             Expression::PrefixOp { fc, op, expr } => {
                 let mut val = self.eval_expr(expr)?;
@@ -301,8 +320,8 @@ impl Runtime {
                 unit,
             }),
             (InfixOp::Pow, ValueKind::Number(a), ValueKind::Number(b)) => {
-                let pow: isize = if b.is_integer() {
-                    b.to_isize().unwrap()
+                let pow: isize = if b.fract() == 0.into() {
+                    b.trunc().to_isize().unwrap()
                 } else {
                     unimplemented!("Floating point power is not implemented")
                 };
@@ -314,7 +333,7 @@ impl Runtime {
                 }
 
                 if pow.is_negative() {
-                    res = res.inverse();
+                    res = res.recip();
                 }
 
                 Ok(Value {
@@ -356,7 +375,7 @@ impl Runtime {
 
 fn apply_prefix(fc: FC, prefix: SiPrefix, mut val: Value) -> Result<Value, EvalError> {
     let kind = match &val.kind {
-        ValueKind::Number(n) => ValueKind::Number(prefix.value() * n),
+        ValueKind::Number(n) => ValueKind::Number(&prefix.value() * n),
         ValueKind::FunctionRef(_) => return Err(EvalError::InvalidSiPrefix(fc, prefix, val)),
     };
     val.kind = kind;
@@ -390,8 +409,7 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
                 ));
             }
             match &rhs.kind {
-                ValueKind::Number(n) if n.is_integer() => {
-                    let n = n.to_isize().unwrap();
+                ValueKind::Number(n) => {
                     Ok(lhs.unit.pow(n))
                 }
                 _ => Err(UnitError::InvalidPowerValue(

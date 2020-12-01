@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use bigdecimal::BigDecimal;
+use fraction::BigDecimal;
 
 use crate::tokenising::Span;
 
@@ -42,7 +42,7 @@ impl FC {
     }
 }
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Item {
     VarSearch(FC),
     UnitSearch(Expression),
@@ -63,7 +63,7 @@ pub enum Item {
     SilentExpression(Expression),
 }
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Eq, PartialEq, Hash)]
 pub enum LineItem {
     Empty,
     VarSearch(FC),
@@ -87,7 +87,7 @@ pub enum DeclarationLhs {
 
 /// Equality or declaration of variables have the same syntax and
 /// can only be disambiguated at runtime.
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Eq, PartialEq, Hash)]
 pub struct DeclarationOrEquality {
     pub fc: FC,
     pub lhs: DeclarationLhs,
@@ -137,7 +137,7 @@ impl DeclarationOrEquality {
     }
 }
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Expression {
     IntegerLit {
         fc: FC,
@@ -201,13 +201,13 @@ pub enum SiPrefix {
 impl SiPrefix {
     pub fn value(&self) -> BigDecimal {
         match self {
-            SiPrefix::Femto => BigDecimal::from(1_000_000_000_000_000u64).inverse(),
-            SiPrefix::Pico => BigDecimal::from(1_000_000_000_000u64).inverse(),
-            SiPrefix::Nano => BigDecimal::from(1_000_000_000u64).inverse(),
-            SiPrefix::Micro => BigDecimal::from(1_000_000u64).inverse(),
-            SiPrefix::Milli => BigDecimal::from(1_000u64).inverse(),
-            SiPrefix::Centi => BigDecimal::from(100u64).inverse(),
-            SiPrefix::Deci => BigDecimal::from(10u64).inverse(),
+            SiPrefix::Femto => BigDecimal::from(1_000_000_000_000_000u64).recip(),
+            SiPrefix::Pico => BigDecimal::from(1_000_000_000_000u64).recip(),
+            SiPrefix::Nano => BigDecimal::from(1_000_000_000u64).recip(),
+            SiPrefix::Micro => BigDecimal::from(1_000_000u64).recip(),
+            SiPrefix::Milli => BigDecimal::from(1_000u64).recip(),
+            SiPrefix::Centi => BigDecimal::from(100u64).recip(),
+            SiPrefix::Deci => BigDecimal::from(10u64).recip(),
             SiPrefix::Deca => BigDecimal::from(10u64),
             SiPrefix::Hecto => BigDecimal::from(100u64),
             SiPrefix::Kilo => BigDecimal::from(1_000u64),
@@ -221,12 +221,26 @@ impl SiPrefix {
     /// This method can be used when trying to find the prefix
     /// "closest" to the base unit.
     pub fn sort_towards_middle(&self) -> impl Ord {
-        #[derive(Ord, PartialOrd, Eq, PartialEq)]
+        use std::cmp::Ordering;
+
+        #[derive(PartialOrd, Eq, PartialEq)]
         struct T(BigDecimal);
 
+        impl Ord for T {
+            fn cmp(&self, other: &T) -> std::cmp::Ordering {
+                if self.0 == other.0 {
+                    Ordering::Equal
+                } else if self.0 < other.0 {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            }
+        }
+
         let val = self.value();
-        if !val.is_integer() {
-            T(val.inverse())
+        if val < 1.into() {
+            T(val.recip())
         } else {
             T(val)
         }

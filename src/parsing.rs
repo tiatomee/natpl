@@ -1,4 +1,4 @@
-use std::str::FromStr;
+
 
 use crate::{
     syntax::{
@@ -7,7 +7,7 @@ use crate::{
     },
     tokenising::{Span, Token},
 };
-use bigdecimal::BigDecimal;
+use fraction::BigDecimal;
 use thiserror::Error;
 
 pub type Result<'src, T> = core::result::Result<T, ParseError<'src>>;
@@ -252,20 +252,20 @@ impl<'toks, 'src> Parser<'toks, 'src> {
                 }
             }
             Token::IntegerLit(val) => {
-                let val = BigDecimal::from_str(val).unwrap();
+                let val = BigDecimal::from_decimal_str(val).unwrap();
                 Ok(Expression::IntegerLit { fc, val })
             }
             Token::FloatLit((int, dec)) => Ok(Expression::FloatLit {
                 fc,
-                val: BigDecimal::from_str(&format!("{}.{}", int, dec)).unwrap(),
+                val: BigDecimal::from_decimal_str(&format!("{}.{}", int, dec)).unwrap(),
             }),
             Token::ScientificFloatLit((int, dec, exp)) => Ok(Expression::FloatLit {
                 fc,
-                val: BigDecimal::from_str(&format!("{}.{}e{}", int, dec, exp)).unwrap(),
+                val: crate::scinot_parsing::from_decimal_str_and_exp(&format!("{}.{}", int, dec), exp as _),
             }),
             Token::ScientificIntegerLit((val, exp)) => Ok(Expression::FloatLit {
                 fc,
-                val: BigDecimal::from_str(&format!("{}e{}", val, exp)).unwrap(),
+                val: crate::scinot_parsing::from_decimal_str_and_exp(&format!("{}", val), exp as _),
             }),
             t => Err(ParseError::UnexpectedToken(t, fc)),
         }
