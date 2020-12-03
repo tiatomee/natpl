@@ -1,7 +1,7 @@
 use fraction::{BigDecimal, Sign};
 
 pub fn dec_in_scientific_notation(d: &BigDecimal) -> (String, String, i64, Sign) {
-    let num = format!("{:.prec$}", d, prec = 48);
+    let num = format!("{:.prec$}", d, prec = d.get_precision());
 
     let mut parts = num.split('.');
     let int_part = parts.next().unwrap();
