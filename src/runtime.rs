@@ -206,32 +206,25 @@ impl Runtime {
             Expression::Variable(id) => self
                 .lookup(id.name_ref())
                 .ok_or_else(|| EvalError::UndefinedName(id.fc(), id.name_ref().clone())),
-            Expression::Call {
-                fc: _,
-                base,
-                args,
-            } => {
-                match &**base {
-                    Expression::Variable(s) if s.name_ref() == "sqrt" => {
-                        assert_eq!(args.len(), 1);
-                        let arg = &args[0];
-                        let val = self.eval_expr(arg)?;
+            Expression::Call { fc: _, base, args } => match &**base {
+                Expression::Variable(s) if s.name_ref() == "sqrt" => {
+                    assert_eq!(args.len(), 1);
+                    let arg = &args[0];
+                    let val = self.eval_expr(arg)?;
 
-                        let kind = match &val.kind {
-                            ValueKind::Number(n) => ValueKind::Number(n.to_f64().unwrap().sqrt().into()),
-                            _ => todo!(),
-                        };
+                    let kind = match &val.kind {
+                        ValueKind::Number(n) => {
+                            ValueKind::Number(n.to_f64().unwrap().sqrt().into())
+                        }
+                        _ => todo!(),
+                    };
 
-                        let unit = val.unit.pow(&(BigDecimal::from(1) / BigDecimal::from(2)));
+                    let unit = val.unit.pow(&(BigDecimal::from(1) / BigDecimal::from(2)));
 
-                        Ok(Value {
-                            kind,
-                            unit,
-                        })
-                    }
-                    _ => todo!()
+                    Ok(Value { kind, unit })
                 }
-            }
+                _ => todo!(),
+            },
             Expression::PrefixOp { fc, op, expr } => {
                 let mut val = self.eval_expr(expr)?;
                 match op {
@@ -409,9 +402,7 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
                 ));
             }
             match &rhs.kind {
-                ValueKind::Number(n) => {
-                    Ok(lhs.unit.pow(n))
-                }
+                ValueKind::Number(n) => Ok(lhs.unit.pow(n)),
                 _ => Err(UnitError::InvalidPowerValue(
                     fc,
                     lhs.unit.clone(),

@@ -1,5 +1,3 @@
-
-
 use crate::{
     syntax::{
         DeclarationLhs, DeclarationOrEquality, Expression, HasFC, Identifier, InfixOp, LineItem,
@@ -261,7 +259,10 @@ impl<'toks, 'src> Parser<'toks, 'src> {
             }),
             Token::ScientificFloatLit((int, dec, exp)) => Ok(Expression::FloatLit {
                 fc,
-                val: crate::scinot_parsing::from_decimal_str_and_exp(&format!("{}.{}", int, dec), exp as _),
+                val: crate::scinot_parsing::from_decimal_str_and_exp(
+                    &format!("{}.{}", int, dec),
+                    exp as _,
+                ),
             }),
             Token::ScientificIntegerLit((val, exp)) => Ok(Expression::FloatLit {
                 fc,

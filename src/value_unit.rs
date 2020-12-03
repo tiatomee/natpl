@@ -1,7 +1,9 @@
 use fraction::*;
 use std::{collections::BTreeMap, fmt::Display};
 
-use crate::{scinot_parsing::dec_in_scientific_notation, syntax::Name, scinot_parsing::max_precision};
+use crate::{
+    scinot_parsing::dec_in_scientific_notation, scinot_parsing::max_precision, syntax::Name,
+};
 
 #[derive(Debug, Clone)]
 pub struct Value {
@@ -107,10 +109,10 @@ impl Unit {
 
         for (name, val) in &other.parts {
             let total = parts
-            .entry(name.clone())
-            .and_modify(|e| *e -= val)
-            .or_insert_with(|| -val.clone())
-            .clone();
+                .entry(name.clone())
+                .and_modify(|e| *e -= val)
+                .or_insert_with(|| -val.clone())
+                .clone();
 
             if total == 0.into() {
                 parts.remove(name);

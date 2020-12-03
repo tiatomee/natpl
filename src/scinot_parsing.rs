@@ -17,7 +17,7 @@ pub fn dec_in_scientific_notation(d: &BigDecimal) -> (String, String, i64, Sign)
         let dec_part = if let Some(dec) = parts.next() {
             dec
         } else {
-            return ("0".to_string(), "".to_string(), 0, Sign::Plus)
+            return ("0".to_string(), "".to_string(), 0, Sign::Plus);
         };
         let full_length = dec_part.len();
         let stripped_left = dec_part.trim_start_matches('0');
@@ -55,7 +55,6 @@ pub fn from_decimal_str_and_exp(s: &str, exp: isize) -> BigDecimal {
 
     BigDecimal::from_decimal_str(s).unwrap() * power_of_10(exp)
 }
-
 
 pub fn max_precision(s: &str, prec: u8) -> String {
     let mut buf = String::with_capacity(prec as _);
