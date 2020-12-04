@@ -8,10 +8,30 @@ use crate::{
 use fraction::{BigDecimal, ToPrimitive};
 use thiserror::Error;
 
+#[derive(Debug, Default, Clone)]
+pub struct CallStack(Vec<HashMap<Name, Value>>);
+
+impl CallStack {
+    // Name might be changed in future
+    #[allow(clippy::ptr_arg)]
+    fn lookup(&self, name: &Name) -> Option<&Value> {
+        self.0.iter().rev().find_map(|map| map.get(name))
+    }
+
+    fn push(&mut self, map: HashMap<Name, Value>) {
+        self.0.push(map)
+    }
+
+    fn pop(&mut self) {
+        let _ = self.0.pop();
+    }
+}
+
 #[derive(Default)]
 pub struct Runtime {
     units: HashSet<Name>,
     unit_aliases: HashMap<Name, Value>,
+    /// Variables in the global scope
     variables: HashMap<Name, Value>,
     functions: HashMap<Name, (Vec<Name>, Expression)>,
 }
@@ -21,13 +41,18 @@ impl Runtime {
         Default::default()
     }
 
-    pub fn eval_line_item(&mut self, item: LineItem) -> Result<EvalResult, ItemError> {
+    pub fn eval_line_item(
+        &mut self,
+        item: LineItem,
+        call_stack: &mut CallStack,
+    ) -> Result<EvalResult, ItemError> {
         match self.line_item_to_item(item) {
-            Some(item) => self.eval_item(item),
+            Some(item) => self.eval_item(item, call_stack),
             None => Ok(EvalResult::Empty),
         }
     }
 
+    /// Given a unit, find other unit aliases with the same unit
     pub fn find_units<'a, 'b: 'a>(&'b self, unit: &'a Unit) -> HashMap<&'a Name, ValueKind> {
         self.unit_aliases
             .iter()
@@ -83,7 +108,11 @@ impl Runtime {
         Some(it)
     }
 
-    fn eval_item(&mut self, item: Item) -> Result<EvalResult, ItemError> {
+    fn eval_item(
+        &mut self,
+        item: Item,
+        call_stack: &mut CallStack,
+    ) -> Result<EvalResult, ItemError> {
         use std::collections::hash_map::Entry;
 
         match item {
@@ -101,7 +130,7 @@ impl Runtime {
                 functions: Default::default(), // TODO
             }),
             Item::UnitSearch(expr) => {
-                let val = self.eval_expr(&expr)?;
+                let val = self.eval_expr(&expr, call_stack)?;
                 Ok(EvalResult::UnitSearchResult {
                     unit_aliases: self
                         .find_units(&val.unit)
@@ -127,7 +156,7 @@ impl Runtime {
                 }
             }
             Item::UnitAlias(_, name, expr) => {
-                let value = self.eval_expr(&expr)?;
+                let value = self.eval_expr(&expr, call_stack)?;
 
                 let name = name.name();
                 match self.unit_aliases.entry(name.clone()) {
@@ -139,7 +168,7 @@ impl Runtime {
                 }
             }
             Item::VariableDeclaration { fc: _, name, rhs } => {
-                let value = self.eval_expr(&rhs)?;
+                let value = self.eval_expr(&rhs, call_stack)?;
 
                 let name = name.name();
                 match self.variables.entry(name.clone()) {
@@ -167,17 +196,17 @@ impl Runtime {
                 }
             }
             Item::PrintedExpression(_, e) => {
-                let val = self.eval_expr(&e)?;
+                let val = self.eval_expr(&e, call_stack)?;
                 Ok(EvalResult::PrintValue(e, val))
             }
             Item::SilentExpression(e) => {
-                let val = self.eval_expr(&e)?;
+                let val = self.eval_expr(&e, call_stack)?;
                 Ok(EvalResult::Value(val))
             }
         }
     }
 
-    fn eval_expr(&self, expr: &Expression) -> Result<Value, EvalError> {
+    fn eval_expr(&self, expr: &Expression, call_stack: &mut CallStack) -> Result<Value, EvalError> {
         match expr {
             Expression::IntegerLit { fc: _, val } => Ok(Value {
                 kind: ValueKind::Number(val.clone()),
@@ -193,39 +222,60 @@ impl Runtime {
                 full_name,
                 prefix,
             } => {
-                if let Some(val) = self.lookup(full_name) {
+                if let Some(val) = self.lookup(full_name, call_stack) {
                     return Ok(val);
                 }
 
-                if let Some(val) = self.lookup(name) {
+                if let Some(val) = self.lookup(name, call_stack) {
                     apply_prefix(*fc, *prefix, val)
                 } else {
                     Err(EvalError::UndefinedName(*fc, full_name.clone()))
                 }
             }
             Expression::Variable(id) => self
-                .lookup(id.name_ref())
+                .lookup(id.name_ref(), call_stack)
                 .ok_or_else(|| EvalError::UndefinedName(id.fc(), id.name_ref().clone())),
             Expression::Call { fc, base, args } => {
-                let base = self.eval_expr(&**base)?;
+                let base = self.eval_expr(&**base, call_stack)?;
                 let args: Vec<_> = args
                     .iter()
-                    .map(|e| Ok((e.fc(), self.eval_expr(e)?)))
+                    .map(|e| Ok((e.fc(), self.eval_expr(e, call_stack)?)))
                     .collect::<Result<_, EvalError>>()?;
 
                 match &base.kind {
                     ValueKind::FunctionRef(name) => {
                         if let Some(res) = crate::functions::builtin_func(*fc, name, &base, &args) {
                             res
+                        } else if let Some((arg_names, body)) = self.functions.get(name) {
+                            if args.len() != arg_names.len() {
+                                return Err(EvalError::CallArgumentMismatch {
+                                    fc: *fc,
+                                    base: base.clone(),
+                                    num_args_applied: args.len(),
+                                    num_args_expected: arg_names.len(),
+                                });
+                            }
+                            let arg_map = arg_names
+                                .iter()
+                                .zip(args)
+                                .map(|(a, (_, v))| (a.clone(), v))
+                                .collect();
+                            call_stack.push(arg_map);
+
+                            let res = self.eval_expr(body, call_stack);
+
+                            call_stack.pop();
+
+                            res
                         } else {
                             todo!()
                         }
                     }
-                    _ => todo!(),
+                    base_kind => todo!("Func call on {:?}", base_kind),
                 }
             }
             Expression::PrefixOp { fc, op, expr } => {
-                let mut val = self.eval_expr(expr)?;
+                let mut val = self.eval_expr(expr, call_stack)?;
                 match op {
                     crate::syntax::PrefixOp::Pos => match &mut val.kind {
                         ValueKind::Number(_) => Ok(val),
@@ -244,29 +294,26 @@ impl Runtime {
                     },
                 }
             }
-            Expression::InfixOp { fc, op, lhs, rhs } => self.eval_infix_op(*fc, *op, lhs, rhs),
+            Expression::InfixOp { fc, op, lhs, rhs } => {
+                self.eval_infix_op(*fc, *op, lhs, rhs, call_stack)
+            }
             Expression::UnitOf(_, expr) => {
-                let val = self.eval_expr(expr)?;
+                let val = self.eval_expr(expr, call_stack)?;
                 Ok(Value {
                     kind: ValueKind::Number(BigDecimal::from(1)),
                     unit: val.unit,
                 })
             }
-            Expression::Parenthesised(_, expr) => self.eval_expr(expr),
+            Expression::Parenthesised(_, expr) => self.eval_expr(expr, call_stack),
         }
     }
 
     // Name might be changed in future
     #[allow(clippy::ptr_arg)]
-    pub fn lookup(&self, name: &Name) -> Option<Value> {
-        if let Some(val) = self.variables.get(name) {
+    pub fn lookup(&self, name: &Name, call_stack: &CallStack) -> Option<Value> {
+        if let Some(val) = call_stack.lookup(name) {
             Some(val.clone())
-        } else if self.units.contains(name) {
-            Some(Value {
-                kind: ValueKind::Number(BigDecimal::from(1)),
-                unit: Unit::new_named(name.clone()),
-            })
-        } else if let Some(val) = self.unit_aliases.get(name) {
+        } else if let Some(val) = self.variables.get(name) {
             Some(val.clone())
         } else if self.functions.contains_key(name)
             || crate::functions::BUILTIN_FUNCTION_NAMES.contains(&&**name)
@@ -275,6 +322,13 @@ impl Runtime {
                 kind: ValueKind::FunctionRef(name.clone()),
                 unit: Unit::new(),
             })
+        } else if self.units.contains(name) {
+            Some(Value {
+                kind: ValueKind::Number(BigDecimal::from(1)),
+                unit: Unit::new_named(name.clone()),
+            })
+        } else if let Some(val) = self.unit_aliases.get(name) {
+            Some(val.clone())
         } else {
             None
         }
@@ -286,9 +340,10 @@ impl Runtime {
         op: InfixOp,
         lhs: &Expression,
         rhs: &Expression,
+        call_stack: &mut CallStack,
     ) -> Result<Value, EvalError> {
-        let lhs = self.eval_expr(lhs)?;
-        let rhs = self.eval_expr(rhs)?;
+        let lhs = self.eval_expr(lhs, call_stack)?;
+        let rhs = self.eval_expr(rhs, call_stack)?;
 
         let unit = infix_unit(fc, op, &lhs, &rhs)?;
 

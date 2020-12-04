@@ -1,4 +1,4 @@
-use runtime::{EvalResult, Runtime};
+use runtime::{CallStack, EvalResult, Runtime};
 
 use thiserror::Error;
 
@@ -38,7 +38,7 @@ pub fn load_file(rt: &mut Runtime, content: &str, print: bool) -> Result<(), Loa
             }
         };
 
-        match rt.eval_line_item(item)? {
+        match rt.eval_line_item(item, &mut CallStack::default())? {
             EvalResult::Empty => {}
             EvalResult::Value(_) => {}
             EvalResult::PrintValue(expr, val) => {

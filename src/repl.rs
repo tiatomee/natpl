@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     parsing::Parser,
+    runtime::CallStack,
     syntax::{HasFC, Name, SiPrefix},
     value_unit::{Value, ValueKind},
 };
@@ -35,7 +36,7 @@ pub fn repl(rt: &mut Runtime) -> Result<(), Box<dyn std::error::Error>> {
                 let line_item = Parser::parse_line(&toks);
 
                 match line_item {
-                    Ok(item) => match rt.eval_line_item(item) {
+                    Ok(item) => match rt.eval_line_item(item, &mut CallStack::default()) {
                         Ok(EvalResult::Empty) => {}
                         Ok(EvalResult::VariableSearchResult {
                             unit_aliases: _,
@@ -197,6 +198,7 @@ fn unit_matches(rt: &Runtime, val: &Value) -> impl Iterator<Item = (Name, ValueK
         )
 }
 
+/// List of best unit aliases (and their prefixes) to display
 fn closest_match(
     val_kind: &ValueKind,
     matches: HashMap<&Name, ValueKind>,
@@ -271,10 +273,12 @@ fn closest_match(
         .map(|(name, (prefix, val, _))| (name, prefix, val))
 }
 
+/// Grade how close a number is to another in terms of "niceness"
 fn num_distance(a: &BigDecimal, b: &BigDecimal, handicap: f64) -> Rating {
     let div = a / b;
     let div_abs = div.abs();
 
+    // Only take numbers between 1 and 999
     if div_abs < BigDecimal::from(1) || div_abs > BigDecimal::from(999) {
         Rating::max_value()
     } else {
