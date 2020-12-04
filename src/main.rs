@@ -9,11 +9,12 @@ pub mod syntax;
 pub mod parsing;
 pub mod tokenising;
 
+pub mod functions;
 pub mod runtime;
 pub mod value_unit;
 
+pub mod num;
 pub mod repl;
-pub mod scinot_parsing;
 
 #[derive(Debug, Error)]
 pub enum LoadFileError {

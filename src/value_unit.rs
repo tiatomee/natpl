@@ -1,9 +1,7 @@
 use fraction::*;
 use std::{collections::BTreeMap, fmt::Display};
 
-use crate::{
-    scinot_parsing::dec_in_scientific_notation, scinot_parsing::max_precision, syntax::Name,
-};
+use crate::{num::dec_in_scientific_notation, num::max_precision, syntax::Name};
 
 #[derive(Debug, Clone)]
 pub struct Value {
@@ -24,6 +22,10 @@ impl Display for ValueKind {
             ValueKind::Number(num) => {
                 let (int, dec, exp, sign) = dec_in_scientific_notation(&num);
 
+                if exp < -80 {
+                    return f.write_str("≈0");
+                }
+
                 let exp_str = if exp == 0 {
                     "".to_string()
                 } else {
@@ -31,8 +33,12 @@ impl Display for ValueKind {
                 };
 
                 if (0..4).contains(&exp) {
-                    if dec.len() < exp as _ {
-                        f.write_fmt(format_args!("{:.prec$}", num, prec = 0))
+                    if dec.len() < exp as usize {
+                        f.write_fmt(format_args!(
+                            "{:.prec$}",
+                            num,
+                            prec = num.get_precision().min(4)
+                        ))
                     } else {
                         f.write_fmt(format_args!(
                             "{:.prec$}",

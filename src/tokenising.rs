@@ -47,6 +47,9 @@ pub enum Token<'input> {
     #[regex(r"(⁰|¹|²|³|⁴|⁵|⁶|⁷|⁸|⁹)+", |lex| unicode_power_num(lex.slice()))]
     OpPowNum(u64),
 
+    #[token("√")]
+    OpSqrt,
+
     #[token("[")]
     BracketOpen,
 

@@ -149,13 +149,31 @@ impl<'toks, 'src> Parser<'toks, 'src> {
     fn parse_expr_bp(&mut self, min_bp: u8) -> Result<'src, Expression> {
         let (t, span) = self.toks.first().ok_or(ParseError::UnexpectedEnd)?;
 
-        let mut lhs = if let Some(((), bp, op)) = prefix_binding_power(*t) {
+        let mut lhs = if let Some(((), bp)) = prefix_binding_power(*t) {
             self.next()?;
             let rhs = self.parse_expr_bp(bp)?;
-            Expression::PrefixOp {
-                fc: FC::from(span).merge(rhs.fc()),
-                op,
-                expr: Box::new(rhs),
+            match *t {
+                Token::OpAdd | Token::OpSub => {
+                    let op = match *t {
+                        Token::OpAdd => PrefixOp::Pos,
+                        Token::OpSub => PrefixOp::Neg,
+                        _ => unreachable!(),
+                    };
+                    Expression::PrefixOp {
+                        fc: FC::from(span).merge(rhs.fc()),
+                        op,
+                        expr: Box::new(rhs),
+                    }
+                }
+                Token::OpSqrt => {
+                    let t_fc = FC::from_span(span.clone());
+                    Expression::Call {
+                        fc: t_fc.merge(rhs.fc()),
+                        base: Box::new(Expression::Variable(Identifier(t_fc, "sqrt".to_string()))),
+                        args: vec![rhs],
+                    }
+                }
+                _ => unreachable!(),
             }
         } else {
             self.parse_expr_atom()?
@@ -259,14 +277,11 @@ impl<'toks, 'src> Parser<'toks, 'src> {
             }),
             Token::ScientificFloatLit((int, dec, exp)) => Ok(Expression::FloatLit {
                 fc,
-                val: crate::scinot_parsing::from_decimal_str_and_exp(
-                    &format!("{}.{}", int, dec),
-                    exp as _,
-                ),
+                val: crate::num::from_decimal_str_and_exp(&format!("{}.{}", int, dec), exp as _),
             }),
             Token::ScientificIntegerLit((val, exp)) => Ok(Expression::FloatLit {
                 fc,
-                val: crate::scinot_parsing::from_decimal_str_and_exp(&format!("{}", val), exp as _),
+                val: crate::num::from_decimal_str_and_exp(&format!("{}", val), exp as _),
             }),
             t => Err(ParseError::UnexpectedToken(t, fc)),
         }
@@ -377,17 +392,18 @@ impl<'toks, 'src> Parser<'toks, 'src> {
     }
 }
 
-fn prefix_binding_power(t: Token<'_>) -> Option<((), u8, PrefixOp)> {
+fn prefix_binding_power(t: Token<'_>) -> Option<((), u8)> {
     match t {
-        Token::OpAdd => Some(((), 100, PrefixOp::Pos)),
-        Token::OpSub => Some(((), 100, PrefixOp::Neg)),
+        Token::OpAdd => Some(((), 100)),
+        Token::OpSub => Some(((), 100)),
+        Token::OpSqrt => Some(((), 120)),
         _ => None,
     }
 }
 
 fn infix_binding_power(t: Token<'_>) -> Option<(u8, u8, InfixOp)> {
     match t {
-        Token::OpPow => Some((91, 90, InfixOp::Pow)),
+        Token::OpPow => Some((151, 150, InfixOp::Pow)),
         Token::OpMul | Token::Identifier(_) => Some((80, 81, InfixOp::Mul)),
         Token::OpDiv => Some((80, 81, InfixOp::Div)),
         Token::OpMod => Some((80, 81, InfixOp::Mod)),

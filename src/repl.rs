@@ -278,6 +278,6 @@ fn num_distance(a: &BigDecimal, b: &BigDecimal, handicap: f64) -> Rating {
     if div_abs < BigDecimal::from(1) || div_abs > BigDecimal::from(999) {
         Rating::max_value()
     } else {
-        (div_abs.to_f64().unwrap() * handicap) as Rating
+        (div_abs.to_f64().unwrap_or(std::f64::NAN) * handicap) as Rating
     }
 }

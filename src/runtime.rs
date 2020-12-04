@@ -206,25 +206,24 @@ impl Runtime {
             Expression::Variable(id) => self
                 .lookup(id.name_ref())
                 .ok_or_else(|| EvalError::UndefinedName(id.fc(), id.name_ref().clone())),
-            Expression::Call { fc: _, base, args } => match &**base {
-                Expression::Variable(s) if s.name_ref() == "sqrt" => {
-                    assert_eq!(args.len(), 1);
-                    let arg = &args[0];
-                    let val = self.eval_expr(arg)?;
+            Expression::Call { fc, base, args } => {
+                let base = self.eval_expr(&**base)?;
+                let args: Vec<_> = args
+                    .iter()
+                    .map(|e| Ok((e.fc(), self.eval_expr(e)?)))
+                    .collect::<Result<_, EvalError>>()?;
 
-                    let kind = match &val.kind {
-                        ValueKind::Number(n) => {
-                            ValueKind::Number(n.to_f64().unwrap().sqrt().into())
+                match &base.kind {
+                    ValueKind::FunctionRef(name) => {
+                        if let Some(res) = crate::functions::builtin_func(*fc, name, &base, &args) {
+                            res
+                        } else {
+                            todo!()
                         }
-                        _ => todo!(),
-                    };
-
-                    let unit = val.unit.pow(&(BigDecimal::from(1) / BigDecimal::from(2)));
-
-                    Ok(Value { kind, unit })
+                    }
+                    _ => todo!(),
                 }
-                _ => todo!(),
-            },
+            }
             Expression::PrefixOp { fc, op, expr } => {
                 let mut val = self.eval_expr(expr)?;
                 match op {
@@ -274,6 +273,11 @@ impl Runtime {
                 kind: ValueKind::FunctionRef(name.clone()),
                 unit: Unit::new(),
             })
+        } else if crate::functions::BUILTIN_FUNCTION_NAMES.contains(&&**name) {
+            Some(Value {
+                kind: ValueKind::FunctionRef(name.clone()),
+                unit: Unit::new(),
+            })
         } else {
             None
         }
@@ -313,26 +317,46 @@ impl Runtime {
                 unit,
             }),
             (InfixOp::Pow, ValueKind::Number(a), ValueKind::Number(b)) => {
-                let pow: isize = if b.fract() == 0.into() {
-                    b.trunc().to_isize().unwrap()
+                if b.abs().fract() == 0.into() {
+                    // Integer power
+                    let pow = b.trunc().to_isize().unwrap();
+
+                    let mut res = BigDecimal::from(1);
+
+                    for _ in 0..pow.abs() {
+                        res *= a;
+                    }
+
+                    if pow.is_negative() {
+                        res = res.recip();
+                    }
+
+                    Ok(Value {
+                        kind: ValueKind::Number(res),
+                        unit,
+                    })
+                } else if &lhs.unit == &rhs.unit && &lhs.unit == &Unit::new() {
+                    // Float power, only works on unitless values
+                    use rug::ops::Pow;
+
+                    let a = crate::num::float_from_decimal(a);
+                    let b = crate::num::float_from_decimal(b);
+
+                    let res = a.pow(b);
+
+                    let res = crate::num::decimal_from_float(&res);
+                    Ok(Value {
+                        kind: ValueKind::Number(res),
+                        unit: Unit::new(),
+                    })
                 } else {
-                    unimplemented!("Floating point power is not implemented")
-                };
-
-                let mut res = BigDecimal::from(1);
-
-                for _ in 0..pow.abs() {
-                    res *= a;
+                    Err(EvalError::InvalidInfixOperator(
+                        fc,
+                        op,
+                        lhs.clone(),
+                        rhs.clone(),
+                    ))
                 }
-
-                if pow.is_negative() {
-                    res = res.recip();
-                }
-
-                Ok(Value {
-                    kind: ValueKind::Number(res),
-                    unit,
-                })
             }
             (InfixOp::Eq, ValueKind::Number(a), ValueKind::Number(b)) => {
                 if a == b {
@@ -381,7 +405,7 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
             if lhs.unit == rhs.unit {
                 Ok(lhs.unit.clone())
             } else {
-                Err(UnitError::IncompatibleUnits(
+                Err(UnitError::IncompatibleUnitsInfix(
                     fc,
                     op,
                     lhs.unit.clone(),
@@ -394,7 +418,7 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
         InfixOp::Div => Ok(lhs.unit.divide(&rhs.unit)),
         InfixOp::Pow => {
             if rhs.unit != Unit::new() {
-                return Err(UnitError::IncompatibleUnits(
+                return Err(UnitError::IncompatibleUnitsInfix(
                     fc,
                     op,
                     lhs.unit.clone(),
@@ -414,7 +438,7 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
             if lhs.unit == rhs.unit {
                 Ok(lhs.unit.clone())
             } else {
-                Err(UnitError::IncompatibleUnits(
+                Err(UnitError::IncompatibleUnitsInfix(
                     fc,
                     op,
                     lhs.unit.clone(),
@@ -426,7 +450,7 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
             if lhs.unit == rhs.unit {
                 Ok(Unit::new())
             } else {
-                Err(UnitError::IncompatibleUnits(
+                Err(UnitError::IncompatibleUnitsInfix(
                     fc,
                     op,
                     lhs.unit.clone(),
@@ -438,7 +462,7 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
             if lhs.unit == rhs.unit {
                 Ok(Unit::new())
             } else {
-                Err(UnitError::IncompatibleUnits(
+                Err(UnitError::IncompatibleUnitsInfix(
                     fc,
                     op,
                     lhs.unit.clone(),
@@ -483,6 +507,9 @@ pub enum EvalError {
     #[error("Undefined name: {}", .1)]
     UndefinedName(FC, Name),
 
+    #[error("Value type mismatch, found {} [{}]", .1.kind, .1.unit)]
+    ValueKindMismatch(FC, Value),
+
     #[error("Invalid prefix operator {:?} on value {} [{}]", .1, .2.kind, .2.unit)]
     InvalidPrefixOperator(FC, PrefixOp, Value),
 
@@ -495,14 +522,28 @@ pub enum EvalError {
     #[error("Equality assertion error {:?} on values {} [{}] and {} [{}]", .1, .2.kind, .2.unit, .3.kind, .3.unit)]
     EqualtyError(FC, InfixOp, Value, Value),
 
+    #[error("Calling a values as a function that's not a function type: {}", .1.kind)]
+    CallOnNonFunction(FC, Value),
+
+    #[error("Incorrect amount of function arguments: {} called with {} argument(s), but {} were expected", .base.kind, .num_args_applied, .num_args_expected)]
+    CallArgumentMismatch {
+        fc: FC,
+        base: Value,
+        num_args_expected: usize,
+        num_args_applied: usize,
+    },
+
     #[error("Unit error: {}", .0)]
     UnitError(#[from] UnitError),
 }
 
 #[derive(Debug, Error)]
 pub enum UnitError {
+    #[error("Unit mismatch, found ({}) but expected ({})", .found, .expected)]
+    UnitMismatch { fc: FC, expected: Unit, found: Unit },
+
     #[error("Incompatible units ({}) and ({}) for operation {:?}", .2, .3, .1)]
-    IncompatibleUnits(FC, InfixOp, Unit, Unit),
+    IncompatibleUnitsInfix(FC, InfixOp, Unit, Unit),
 
     #[error("Invalid power on unit ({}): {}", .1, .2)]
     InvalidPowerValue(FC, Unit, ValueKind),

@@ -1,6 +1,7 @@
 use fraction::{BigDecimal, Sign};
 
 pub fn dec_in_scientific_notation(d: &BigDecimal) -> (String, String, i64, Sign) {
+    let d = d.clone().calc_precision(Some(150));
     let num = format!("{:.prec$}", d, prec = d.get_precision());
 
     let mut parts = num.split('.');
@@ -56,9 +57,28 @@ pub fn from_decimal_str_and_exp(s: &str, exp: isize) -> BigDecimal {
     BigDecimal::from_decimal_str(s).unwrap() * power_of_10(exp)
 }
 
+pub fn float_from_decimal(d: &BigDecimal) -> rug::Float {
+    let str = format!("{:.prec$}", d, prec = d.get_precision().max(32));
+    let val = rug::Float::parse(&str).unwrap();
+    rug::Float::with_val(1024, val)
+}
+
+pub fn decimal_from_float(f: &rug::Float) -> BigDecimal {
+    let str = format!("{}", f);
+    let mut parts = str.split(|c| c == 'e' || c == 'E');
+    let mantissa = parts.next().unwrap();
+
+    if let Some(exp) = parts.next() {
+        let exp = exp.parse().unwrap();
+        from_decimal_str_and_exp(mantissa, exp)
+    } else {
+        BigDecimal::from_decimal_str(mantissa).unwrap()
+    }
+}
+
 pub fn max_precision(s: &str, prec: u8) -> String {
     let mut buf = String::with_capacity(prec as _);
-    if s.len() < prec as _ {
+    if s.len() < prec as usize {
         buf.push_str(s);
     } else {
         buf.push_str(&s[0..prec as _]);
