@@ -268,7 +268,9 @@ impl Runtime {
             })
         } else if let Some(val) = self.unit_aliases.get(name) {
             Some(val.clone())
-        } else if self.functions.contains_key(name) || crate::functions::BUILTIN_FUNCTION_NAMES.contains(&&**name) {
+        } else if self.functions.contains_key(name)
+            || crate::functions::BUILTIN_FUNCTION_NAMES.contains(&&**name)
+        {
             Some(Value {
                 kind: ValueKind::FunctionRef(name.clone()),
                 unit: Unit::new(),

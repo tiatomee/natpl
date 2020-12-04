@@ -94,5 +94,9 @@ functions! {
     tan => unary_unitless_float!(|f: rug::Float| f.tan()),
     atan | arctan => unary_unitless_float!(|f: rug::Float| f.atan()),
 
-    sqrt => unary!(|_| true, conv_float_fn!(|f: rug::Float| f.sqrt()), |u: &Unit| u.pow(&(BigDecimal::from(1) / BigDecimal::from(2)))),
+    sqrt => unary!(
+        |_| true,
+        conv_float_fn!(|f: rug::Float| f.sqrt()),
+        |u: &Unit| u.pow(&(BigDecimal::from(1) / BigDecimal::from(2)))
+    ),
 }
