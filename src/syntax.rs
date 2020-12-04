@@ -226,6 +226,9 @@ impl SiPrefix {
         #[derive(PartialOrd, Eq, PartialEq)]
         struct T(BigDecimal);
 
+        // This implementation is okay because self.value() is used which will
+        // never be Inf/NaN.
+        #[allow(clippy::derive_ord_xor_partial_ord)]
         impl Ord for T {
             fn cmp(&self, other: &T) -> std::cmp::Ordering {
                 if self.0 == other.0 {

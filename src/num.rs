@@ -43,6 +43,8 @@ pub fn from_decimal_str_and_exp(s: &str, exp: isize) -> BigDecimal {
 
         let mut d = BigDecimal::from(1);
 
+        // the `*=` doesn't work with type inference
+        #[allow(clippy::assign_op_pattern)]
         for _ in 0..steps {
             d = d * 10u8.into();
         }

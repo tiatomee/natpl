@@ -281,7 +281,7 @@ impl<'toks, 'src> Parser<'toks, 'src> {
             }),
             Token::ScientificIntegerLit((val, exp)) => Ok(Expression::FloatLit {
                 fc,
-                val: crate::num::from_decimal_str_and_exp(&format!("{}", val), exp as _),
+                val: crate::num::from_decimal_str_and_exp(&val.to_string(), exp as _),
             }),
             t => Err(ParseError::UnexpectedToken(t, fc)),
         }
