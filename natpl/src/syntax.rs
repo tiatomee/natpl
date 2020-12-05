@@ -326,6 +326,7 @@ pub enum PrefixOp {
     Neg,
 }
 
+/// Trait for types that have a file-context
 pub trait HasFC {
     fn fc(&self) -> FC;
 }

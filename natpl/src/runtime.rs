@@ -127,7 +127,11 @@ impl Runtime {
                     .iter()
                     .map(|(n, v)| (n.clone(), v.clone()))
                     .collect(),
-                functions: Default::default(), // TODO
+                functions: self
+                    .functions
+                    .iter()
+                    .map(|(n, (args, _))| (n.clone(), args.clone()))
+                    .collect(),
             }),
             Item::UnitSearch(expr) => {
                 let val = self.eval_expr(&expr, call_stack)?;

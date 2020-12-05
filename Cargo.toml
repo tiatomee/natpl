@@ -1,15 +1,6 @@
-[package]
-name = "natpl"
-version = "0.1.0"
-authors = ["tiatomee"]
-edition = "2018"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-logos = "0.11"
-rustyline = "7.0.0"
-thiserror = "1.0"
-owo-colors = "1.1"
-fraction = "0.7.0"
-rug = "1.0"
+[workspace]
+members = [
+    "natpl",
+    "natpl-repl",
+    "natpl-cli",
+]
