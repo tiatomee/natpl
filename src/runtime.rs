@@ -27,7 +27,7 @@ impl CallStack {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Runtime {
     units: HashSet<Name>,
     unit_aliases: HashMap<Name, Value>,
@@ -268,10 +268,10 @@ impl Runtime {
 
                             res
                         } else {
-                            todo!()
+                            unreachable!()
                         }
                     }
-                    base_kind => todo!("Func call on {:?}", base_kind),
+                    _ => Err(EvalError::CallOnNonFunction(*fc, base.clone())),
                 }
             }
             Expression::PrefixOp { fc, op, expr } => {
@@ -574,7 +574,7 @@ pub enum EvalError {
     #[error("Equality assertion error {:?} on values {} [{}] and {} [{}]", .1, .2.kind, .2.unit, .3.kind, .3.unit)]
     EqualtyError(FC, InfixOp, Value, Value),
 
-    #[error("Calling a values as a function that's not a function type: {}", .1.kind)]
+    #[error("Calling a value as a function that's not a function type: {}", .1.kind)]
     CallOnNonFunction(FC, Value),
 
     #[error("Incorrect amount of function arguments: {} called with {} argument(s), but {} were expected", .base.kind, .num_args_applied, .num_args_expected)]

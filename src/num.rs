@@ -62,7 +62,7 @@ pub fn from_decimal_str_and_exp(s: &str, exp: isize) -> BigDecimal {
 pub fn float_from_decimal(d: &BigDecimal) -> rug::Float {
     let str = format!("{:.prec$}", d, prec = d.get_precision().max(32));
     let val = rug::Float::parse(&str).unwrap();
-    rug::Float::with_val(1024, val)
+    rug::Float::with_val(256, val)
 }
 
 pub fn decimal_from_float(f: &rug::Float) -> BigDecimal {

@@ -99,4 +99,15 @@ functions! {
         conv_float_fn!(|f: rug::Float| f.sqrt()),
         |u: &Unit| u.pow(&(BigDecimal::from(1) / BigDecimal::from(2)))
     ),
+
+    cbrt => unary!(
+        |_| true,
+        conv_float_fn!(|f: rug::Float| f.cbrt()),
+        |u: &Unit| u.pow(&(BigDecimal::from(1) / BigDecimal::from(3)))
+    ),
+
+    log | log10 => unary_unitless_float!(|f: rug::Float| f.log10()),
+    ln => unary_unitless_float!(|f: rug::Float| f.ln()),
+
+    exp => unary_unitless_float!(|f: rug::Float| f.exp()),
 }
