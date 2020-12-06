@@ -1,5 +1,10 @@
 use fraction::{BigDecimal, Sign};
 
+#[cfg(feature = "multi-precision-float")]
+pub type Float = rug::Float;
+#[cfg(not(feature = "multi-precision-float"))]
+pub type Float = f64;
+
 pub fn dec_in_scientific_notation(d: &BigDecimal) -> (String, String, i64, Sign) {
     let d = d.clone().calc_precision(Some(150));
     let num = format!("{:.prec$}", d, prec = d.get_precision());
@@ -59,13 +64,21 @@ pub fn from_decimal_str_and_exp(s: &str, exp: isize) -> BigDecimal {
     BigDecimal::from_decimal_str(s).unwrap() * power_of_10(exp)
 }
 
-pub fn float_from_decimal(d: &BigDecimal) -> rug::Float {
+#[cfg(feature = "multi-precision-float")]
+pub fn float_from_decimal(d: &BigDecimal) -> Float {
     let str = format!("{:.prec$}", d, prec = d.get_precision().max(32));
     let val = rug::Float::parse(&str).unwrap();
     rug::Float::with_val(256, val)
 }
 
-pub fn decimal_from_float(f: &rug::Float) -> BigDecimal {
+#[cfg(not(feature = "multi-precision-float"))]
+pub fn float_from_decimal(d: &BigDecimal) -> Float {
+    let str = format!("{:.prec$}", d, prec = d.get_precision().max(32));
+    dbg!(std::f64::consts::PI);
+    dbg!(dbg!(str).parse().unwrap())
+}
+
+pub fn decimal_from_float(f: &Float) -> BigDecimal {
     let str = format!("{}", f);
     let mut parts = str.split(|c| c == 'e' || c == 'E');
     let mantissa = parts.next().unwrap();

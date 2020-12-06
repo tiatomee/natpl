@@ -82,7 +82,7 @@ impl Runtime {
             .collect()
     }
 
-    pub fn line_item_to_item(&mut self, item: LineItem) -> Option<Item> {
+    fn line_item_to_item(&mut self, item: LineItem) -> Option<Item> {
         let it = match item {
             LineItem::Empty => return None,
             LineItem::VarSearch(fc) => Item::VarSearch(fc),
@@ -393,12 +393,16 @@ impl Runtime {
                     })
                 } else if lhs.unit == rhs.unit && lhs.unit == Unit::new() {
                     // Float power, only works on unitless values
+                    #[cfg(feature = "multi-precision-float")]
                     use rug::ops::Pow;
 
                     let a = crate::num::float_from_decimal(a);
                     let b = crate::num::float_from_decimal(b);
 
+                    #[cfg(feature = "multi-precision-float")]
                     let res = a.pow(b);
+                    #[cfg(not(feature = "multi-precision-float"))]
+                    let res = a.powf(b);
 
                     let res = crate::num::decimal_from_float(&res);
                     Ok(Value {

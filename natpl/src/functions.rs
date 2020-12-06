@@ -1,6 +1,7 @@
 use fraction::BigDecimal;
 
 use crate::{
+    num::Float,
     runtime::EvalError,
     runtime::UnitError,
     syntax::FC,
@@ -85,29 +86,29 @@ macro_rules! functions {
 }
 
 functions! {
-    sin => unary_unitless_float!(|f: rug::Float| f.sin()),
-    asin | arcsin => unary_unitless_float!(|f: rug::Float| f.asin()),
+    sin => unary_unitless_float!(|f: Float| f.sin()),
+    asin | arcsin => unary_unitless_float!(|f: Float| f.asin()),
 
-    cos => unary_unitless_float!(|f: rug::Float| f.cos()),
-    acos | arccos => unary_unitless_float!(|f: rug::Float| f.acos()),
+    cos => unary_unitless_float!(|f: Float| f.cos()),
+    acos | arccos => unary_unitless_float!(|f: Float| f.acos()),
 
-    tan => unary_unitless_float!(|f: rug::Float| f.tan()),
-    atan | arctan => unary_unitless_float!(|f: rug::Float| f.atan()),
+    tan => unary_unitless_float!(|f: Float| f.tan()),
+    atan | arctan => unary_unitless_float!(|f: Float| f.atan()),
 
     sqrt => unary!(
         |_| true,
-        conv_float_fn!(|f: rug::Float| f.sqrt()),
+        conv_float_fn!(|f: Float| f.sqrt()),
         |u: &Unit| u.pow(&(BigDecimal::from(1) / BigDecimal::from(2)))
     ),
 
     cbrt => unary!(
         |_| true,
-        conv_float_fn!(|f: rug::Float| f.cbrt()),
+        conv_float_fn!(|f: Float| f.cbrt()),
         |u: &Unit| u.pow(&(BigDecimal::from(1) / BigDecimal::from(3)))
     ),
 
-    log | log10 => unary_unitless_float!(|f: rug::Float| f.log10()),
-    ln => unary_unitless_float!(|f: rug::Float| f.ln()),
+    log | log10 => unary_unitless_float!(|f: Float| f.log10()),
+    ln => unary_unitless_float!(|f: Float| f.ln()),
 
-    exp => unary_unitless_float!(|f: rug::Float| f.exp()),
+    exp => unary_unitless_float!(|f: Float| f.exp()),
 }
