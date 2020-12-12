@@ -48,6 +48,13 @@ pub enum Item {
     UnitSearch(Expression),
     UnitDeclaration(FC, Identifier),
     UnitAlias(FC, Identifier, Expression),
+    ConversionDeclaration {
+        fc: FC,
+        name: Identifier,
+        unit_from: Expression,
+        unit_to: Expression,
+        body: Expression,
+    },
     VariableDeclaration {
         fc: FC,
         name: Identifier,
@@ -70,6 +77,13 @@ pub enum LineItem {
     UnitSearch(Expression),
     UnitDeclaration(FC, Identifier),
     UnitAlias(FC, Identifier, Expression),
+    ConversionDeclaration {
+        fc: FC,
+        name: Identifier,
+        unit_from: Expression,
+        unit_to: Expression,
+        body: Expression,
+    },
     MaybeDeclarationOrEqualityExpression(DeclarationOrEquality),
     PrintedExpression(FC, Expression),
     SilentExpression(Expression),
@@ -297,6 +311,7 @@ pub enum InfixOp {
     Mod,
 
     Pow,
+    In,
 
     Eq,
     Neq,
@@ -312,6 +327,7 @@ impl Display for InfixOp {
             InfixOp::Div => "/",
             InfixOp::Mod => "mod",
             InfixOp::Pow => "^",
+            InfixOp::In => "in",
             InfixOp::Eq => "=",
             InfixOp::Neq => "≠",
             InfixOp::Gt => ">",
@@ -348,6 +364,7 @@ impl HasFC for Item {
             Item::FunctionDeclaration { fc, .. } => *fc,
             Item::PrintedExpression(fc, _) => *fc,
             Item::SilentExpression(expr) => expr.fc(),
+            Item::ConversionDeclaration { fc, body, .. } => fc.merge(body.fc()),
         }
     }
 }
@@ -360,6 +377,7 @@ impl HasFC for LineItem {
             LineItem::UnitSearch(expr) => expr.fc(),
             LineItem::UnitDeclaration(fc, _) => *fc,
             LineItem::UnitAlias(fc, _, _) => *fc,
+            LineItem::ConversionDeclaration { fc, body, .. } => fc.merge(body.fc()),
             LineItem::MaybeDeclarationOrEqualityExpression(decl) => decl.fc(),
             LineItem::PrintedExpression(fc, _) => *fc,
             LineItem::SilentExpression(expr) => expr.fc(),

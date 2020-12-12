@@ -38,6 +38,18 @@ impl<'toks, 'src> Parser<'toks, 'src> {
             }
         }
 
+        if let Ok((fc, name, unit_from, unit_to, body)) = this.parse_conversion_function() {
+            return Ok(LineItem::ConversionDeclaration {
+                fc,
+                name,
+                unit_from,
+                unit_to,
+                body,
+            });
+        } else {
+            this.toks = line_toks;
+        };
+
         if let Ok((fc, expr)) = this.parse_printed_expr() {
             return Ok(LineItem::PrintedExpression(fc, expr));
         } else {
@@ -89,6 +101,22 @@ impl<'toks, 'src> Parser<'toks, 'src> {
         } else {
             Ok((fc.merge(name.fc()), name, expr))
         }
+    }
+
+    fn parse_conversion_function(
+        &mut self,
+    ) -> Result<'src, (FC, Identifier, Expression, Expression, Expression)> {
+        let (fc, ()) = self.expect_and_fc(|t| matches!(t, Token::Conv))?;
+        let name = self.expect_identifier()?;
+
+        let _ = self.expect_and_fc(|t| matches!(t, Token::Colon))?;
+        let unit_from = self.parse_expr_atom()?;
+        let _ = self.expect_and_fc(|t| matches!(t, Token::DArrowR))?;
+        let unit_to = self.parse_expr_atom()?;
+        let _ = self.expect_and_fc(|t| matches!(t, Token::OpEq))?;
+        let body = self.parse_expr()?;
+
+        Ok((fc, name, unit_from, unit_to, body))
     }
 
     fn parse_search(&mut self) -> Result<'src, (FC, Option<Expression>)> {
@@ -410,7 +438,7 @@ fn infix_binding_power(t: Token<'_>) -> Option<(u8, u8, InfixOp)> {
         Token::OpAdd => Some((70, 71, InfixOp::Add)),
         Token::OpSub => Some((70, 71, InfixOp::Sub)),
 
-        Token::OpIn => Some((50, 51, InfixOp::Div)),
+        Token::OpIn => Some((50, 51, InfixOp::In)),
 
         Token::OpEq => Some((20, 21, InfixOp::Eq)),
         Token::OpNeq => Some((20, 21, InfixOp::Neq)),

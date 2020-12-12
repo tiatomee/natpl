@@ -131,7 +131,14 @@ fn closest_match(
 /// Grade how close a number is to another in terms of "niceness"
 fn num_distance(a: &BigDecimal, b: &BigDecimal, handicap: f64) -> Rating {
     let div = a / b;
-    let div_abs = div.abs();
+    let mut div_abs = div.abs();
+
+    // 0 is a bit of a special case, if the number is a "direct" 0
+    // then the "closest" unit should be picked by the `closest_match`
+    // function. So we just pretend 0 is the same as 1.
+    if div_abs == 0.into() {
+        div_abs = 1.into();
+    }
 
     // Only take numbers between 1 and 999
     if div_abs < BigDecimal::from(1) || div_abs > BigDecimal::from(999) {

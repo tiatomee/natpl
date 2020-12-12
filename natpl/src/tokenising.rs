@@ -7,6 +7,16 @@ pub enum Token<'input> {
     #[token("unit")]
     Unit,
 
+    #[token("conv")]
+    Conv,
+
+    #[token(":")]
+    Colon,
+
+    #[token("⇒")]
+    #[token("=>")]
+    DArrowR,
+
     #[token("?")]
     QuestionMark,
 
@@ -65,7 +75,7 @@ pub enum Token<'input> {
     #[token(",")]
     Comma,
 
-    #[regex("(\\p{XID_Start}|_)(\\p{XID_Continue}|')*")]
+    #[regex("(\\p{XID_Start}|_|°)(\\p{XID_Continue}|'|°)*")]
     Identifier(&'input str),
 
     #[regex("[0-9]+")]

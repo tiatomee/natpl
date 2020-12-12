@@ -22,7 +22,7 @@ impl Display for ValueKind {
             ValueKind::Number(num) => {
                 let (int, dec, exp, sign) = dec_in_scientific_notation(&num);
 
-                if exp < -80 {
+                if exp < -50 {
                     return f.write_str("≈0");
                 }
 
@@ -63,7 +63,7 @@ impl Display for ValueKind {
     }
 }
 
-#[derive(Default, Debug, Clone, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Unit {
     parts: BTreeMap<Name, BigDecimal>,
 }

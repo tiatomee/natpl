@@ -6,6 +6,10 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+path = "src/main.rs"
+name = "natpl"
+
 [dependencies]
 natpl = { path = "../natpl" }
 natpl-repl = { path = "../natpl-repl" }

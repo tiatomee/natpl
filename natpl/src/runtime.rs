@@ -31,6 +31,7 @@ impl CallStack {
 pub struct Runtime {
     units: HashSet<Name>,
     unit_aliases: HashMap<Name, Value>,
+    conversions: HashMap<(Unit, Unit), (Name, Expression)>,
     /// Variables in the global scope
     variables: HashMap<Name, Value>,
     functions: HashMap<Name, (Vec<Name>, Expression)>,
@@ -89,6 +90,19 @@ impl Runtime {
             LineItem::UnitSearch(expr) => Item::UnitSearch(expr),
             LineItem::UnitDeclaration(fc, name) => Item::UnitDeclaration(fc, name),
             LineItem::UnitAlias(fc, name, expr) => Item::UnitAlias(fc, name, expr),
+            LineItem::ConversionDeclaration {
+                fc,
+                name,
+                unit_from,
+                unit_to,
+                body,
+            } => Item::ConversionDeclaration {
+                fc,
+                name,
+                unit_from,
+                unit_to,
+                body,
+            },
             LineItem::MaybeDeclarationOrEqualityExpression(decl) => {
                 let name = decl.declaration_name();
 
@@ -168,6 +182,27 @@ impl Runtime {
                     Entry::Vacant(entry) => {
                         let val = entry.insert(value).clone();
                         Ok(EvalResult::Value(val))
+                    }
+                }
+            }
+            Item::ConversionDeclaration {
+                fc: _,
+                name,
+                unit_from,
+                unit_to,
+                body,
+            } => {
+                let from = self.eval_expr(&unit_from, &mut CallStack::default())?;
+                let to = self.eval_expr(&unit_to, &mut CallStack::default())?;
+
+                match self.conversions.entry((from.unit.clone(), to.unit.clone())) {
+                    Entry::Occupied(_) => Err(ItemError::ConversionRedeclared {
+                        from: from.unit,
+                        to: to.unit,
+                    }),
+                    Entry::Vacant(entry) => {
+                        let _ = entry.insert((name.name(), body));
+                        Ok(EvalResult::Empty)
                     }
                 }
             }
@@ -418,6 +453,24 @@ impl Runtime {
                     ))
                 }
             }
+            (InfixOp::In, _, _) => {
+                let lunit = lhs.unit.clone();
+                let runit = rhs.unit.clone();
+
+                if lunit == runit {
+                    Ok(lhs)
+                } else if let Some((name, body)) = self.conversions.get(&(lunit, runit)) {
+                    call_stack.push(Some((name.clone(), lhs.clone())).into_iter().collect());
+
+                    let res = self.eval_expr(body, call_stack);
+
+                    call_stack.pop();
+
+                    res
+                } else {
+                    todo!()
+                }
+            }
             (InfixOp::Eq, ValueKind::Number(a), ValueKind::Number(b)) => {
                 if a == b {
                     Ok(lhs.clone())
@@ -494,6 +547,7 @@ fn infix_unit(fc: FC, op: InfixOp, lhs: &Value, rhs: &Value) -> Result<Unit, Uni
                 )),
             }
         }
+        InfixOp::In => Ok(rhs.unit.clone()),
         InfixOp::Eq => {
             if lhs.unit == rhs.unit {
                 Ok(lhs.unit.clone())
@@ -553,6 +607,8 @@ pub enum EvalResult {
 pub enum ItemError {
     #[error("Unit redeclared: {}", .0)]
     UnitRedeclared(Name),
+    #[error("Conversion redeclared: from [{}] to [{}]", .from, .to)]
+    ConversionRedeclared { from: Unit, to: Unit },
     #[error("Variable redefined: {}", .0)]
     VariableRedefined(Name),
     #[error("Function redefined: {}", .0)]
