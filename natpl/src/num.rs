@@ -19,7 +19,7 @@ pub fn dec_in_scientific_notation(d: &BigDecimal) -> (String, String, i64, Sign)
         (int_part, Sign::Plus)
     };
 
-    if int_part == "0" || int_part == "-0" || int_part == "+0" || int_part.is_empty() {
+    if int_part == "0" || int_part.is_empty() {
         let dec_part = if let Some(dec) = parts.next() {
             dec
         } else {
@@ -35,10 +35,14 @@ pub fn dec_in_scientific_notation(d: &BigDecimal) -> (String, String, i64, Sign)
     } else {
         let exp = int_part.len() - 1;
         let (start, int_rest) = int_part.split_at(1);
-        let int_rest = int_rest.trim_end_matches('0');
-        let dec_part = parts.next().unwrap_or("").trim_end_matches('0');
+        let dec_part = parts.next().unwrap_or("");
         let dec_part = format!("{}{}", int_rest, dec_part);
-        (start.to_string(), dec_part, exp as i64, sign)
+        (
+            start.to_string(),
+            dec_part.trim_end_matches('0').to_string(),
+            exp as i64,
+            sign,
+        )
     }
 }
 
@@ -152,5 +156,14 @@ mod test {
         assert_eq!(i, "3");
         assert!(d.starts_with("3333333"));
         assert_eq!(e, -1);
+    }
+
+    #[test]
+    fn regression_10x1_decimal() {
+        let x = parse("10.4", 0);
+        let (i, d, e, _) = dec_in_scientific_notation(&x);
+        assert_eq!(i, "1");
+        assert_eq!(d, "04");
+        assert_eq!(e, 1);
     }
 }
